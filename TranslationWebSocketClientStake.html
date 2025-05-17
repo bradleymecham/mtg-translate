@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Translation Display</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+        #output { border: 2px solid #4CAF50; padding: 20px; margin-top: 20px; font-size: 24px; }
+    </style>
+</head>
+<body>
+    <h1>Live Translation Display</h1>
+    <div id="output">Waiting for translation...</div>
+
+    <script>
+        const outputDiv = document.getElementById("output");
+
+	function connectWebSocket() {
+		const socket = new WebSocket("ws://192.168.108.9:8765");
+		console.log(socket)
+
+		socket.onopen = (event) => {
+			console.log("WebSocket connection established:", event);
+		};
+
+		socket.onmessage = (event) => {
+		    console.log("Received message:", event.data);
+		    const data = JSON.parse(event.data);
+		    outputDiv.innerText = data.text + "\n" + outputDiv.innerText;
+		};
+	
+		socket.onclose = () => {
+			outputDiv.innerText = "Connection lost. Reconnecting . . . ";
+			setTimeout(connectWebSocket, 3000); // Auto-reconnect after 3 seconds
+		};
+
+		socket.onerror = (error) => {
+		    outputDiv.innerText = "Error connecting to server.";
+		};
+
+	}
+	connectWebSocket();
+    </script>
+</body>
+</html>
