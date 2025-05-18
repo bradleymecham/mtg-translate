@@ -10,6 +10,12 @@ import queue
 import aioconsole
 import configparser
 
+import psutil
+import socket
+import ipaddress
+
+
+
 config = configparser.ConfigParser()
 config.read('config.ini')
 
@@ -18,8 +24,6 @@ lang_abbrev = config['TRANSLATION']['language']
 lang_name = config['TRANSLATION']['language_name']
 
 # Google Cloud clients
-#os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/Users/iowacitystakeguest/Code/EnglishTextToJapanese/feisty-flames-458813-j8-a1f2b51e8596.json"
-print(repr(google_credentials_json))
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = google_credentials_json
 speech_client = speech.SpeechClient()
 translate_client = translate.Client()
@@ -146,7 +150,40 @@ async def transcribe_stream():
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, audio_stream)
 
+def get_interface_type(interface_name):
+    """Heuristically determine interface type based on common naming."""
+    name = interface_name.lower()
+    if "wi-fi" in name or "wlan" in name or "wifi" in name:
+        return "Wi-Fi"
+    elif "eth" in name or "en" in name:
+        return "Ethernet"
+    else:
+        return "Unknown"
+
+def get_ip_addresses():
+    addrs = psutil.net_if_addrs()
+    stats = psutil.net_if_stats()
+    result = []
+
+    for interface, addr_list in addrs.items():
+        if not stats.get(interface) or not stats[interface].isup:
+            continue  # skip interfaces that are down
+
+        for addr in addr_list:
+            if addr.family == socket.AF_INET:
+                ip = addr.address
+                ip_obj = ipaddress.ip_address(ip)
+                if ip_obj.is_loopback or ip_obj.is_link_local:
+                    continue  # skip 127.0.0.1 and 169.254.x.x
+
+                interface_type = get_interface_type(interface)
+                result.append((interface, interface_type, ip))
+    return result
+
 async def main():
+    for iface, iface_type, ip in get_ip_addresses():
+        print(f"{iface} ({iface_type}): {ip}")
+
     server = await websockets.serve(handler, "0.0.0.0", 8765)
     print("WebSocket server started on ws://localhost:8765")
     
