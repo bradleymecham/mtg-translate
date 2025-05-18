@@ -9,36 +9,51 @@
 </head>
 <body>
     <h1>Live Translation Display</h1>
+    <div style="margin: 20px;">
+        <input type="text" id="ipAddress" value="192.168.108.9" placeholder="Enter IP Address" style="width: 200px; padding: 8px; margin-right: 10px;">
+        <button onclick="connectWebSocket()" style="padding: 8px 16px;">Connect</button>
+    </div>
     <div id="output">Waiting for translation...</div>
 
     <script>
         const outputDiv = document.getElementById("output");
+        let socket = null;
 
-	function connectWebSocket() {
-		const socket = new WebSocket("ws://192.168.108.9:8765");
-		console.log(socket)
+        function connectWebSocket() {
+            if (socket) {
+                socket.close();
+            }
 
-		socket.onopen = (event) => {
-			console.log("WebSocket connection established:", event);
-		};
+            const ipAddress = document.getElementById("ipAddress").value;
+            const port = "8765";
+            const wsUrl = `ws://${ipAddress}:${port}`;
+            socket = new WebSocket(wsUrl);
+            console.log(`Connecting to ${wsUrl}`);
 
-		socket.onmessage = (event) => {
-		    console.log("Received message:", event.data);
-		    const data = JSON.parse(event.data);
-		    outputDiv.innerText = data.text + "\n" + outputDiv.innerText;
-		};
-	
-		socket.onclose = () => {
-			outputDiv.innerText = "Connection lost. Reconnecting . . . ";
-			setTimeout(connectWebSocket, 3000); // Auto-reconnect after 3 seconds
-		};
+            socket.onopen = (event) => {
+                console.log("WebSocket connection established:", event);
+                outputDiv.innerText = "Connected successfully!";
+            };
 
-		socket.onerror = (error) => {
-		    outputDiv.innerText = "Error connecting to server.";
-		};
+            socket.onmessage = (event) => {
+                console.log("Received message:", event.data);
+                const data = JSON.parse(event.data);
+                outputDiv.innerText = data.text + "\n" + outputDiv.innerText;
+            };
 
-	}
-	connectWebSocket();
+            socket.onclose = () => {
+                outputDiv.innerText = "Connection lost. Please try connecting again.";
+            };
+
+            socket.onerror = (error) => {
+                outputDiv.innerText = "Error connecting to server. Please check IP address and try again.";
+            };
+        }
+
+        // Initial connection
+        connectWebSocket();
+    </script>
+</body>
     </script>
 </body>
 </html>
