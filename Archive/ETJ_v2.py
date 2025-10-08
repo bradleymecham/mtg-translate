@@ -27,7 +27,7 @@ lang_name = config['TRANSLATION']['language_name']
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = google_credentials_json
 speech_client = speech.SpeechClient()
 translate_client = translate.Client()
-audio_queue = asyncio.Queue()
+audio_queue = queue.Queue()
 
 # WebSocket clients
 clients = set()
@@ -78,13 +78,13 @@ def audio_stream(loop):
     try:
         stream = audio.open(
             format=pyaudio.paInt16, channels=1, 
-            rate=16000, input=True, frames_per_buffer=1024,
-            input_device_index=1)
+            rate=16000, input=True, frames_per_buffer=1024)
         
         while not stop_event.is_set():
             try:
-                audio_chunk = stream.read(1024, exception_on_overflow=True)
+                audio_chunk = stream.read(1024, exception_on_overflow=False)
                 loop.call_soon_threadsafe(audio_queue.put_nowait, audio_chunk)
+                #audio_queue.put(audio_chunk)  # Add to queue for transcription
             except IOError as e:
                 print(f"IO Error: {e}")
     except Exception as e:
@@ -96,62 +96,51 @@ def audio_stream(loop):
         audio.terminate()
 
 
-def transcribe_loop():
-    #print("Transcribing loop")
+async def transcribe_and_translate():
+    """This function is the transcription and translation worker."""
+    config = speech.RecognitionConfig(
+        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+        sample_rate_hertz=16000,
+        language_code="en-US"
+    )
+
+    streaming_config = speech.StreamingRecognitionConfig(
+        config=config,
+        interim_results=True
+    )
+
     while not stop_event.is_set():
-        #print("Starting new recognition setup")
-        config = speech.RecognitionConfig(
-            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=16000,
-            language_code="en-US"
-        )
-
-        streaming_config = speech.StreamingRecognitionConfig(
-            config=config,
-            interim_results=True
-        )
-
-        #print("Starting new recognition session")
-        start_time = time.time()
-
-        def request_generator():
-            """Yields audio chunks from the queue."""
-            #print("Entered request generator")
+        # This generator will provide audio to the API
+        async def request_generator():
+            yield speech.StreamingRecognizeRequest(streaming_config=streaming_config)
+            start_time = time.time()
             while not stop_event.is_set():
                 if time.time() - start_time > 290:  # Restart stream every 290s
-                    #print("Restarting stream...")
                     break
                 try:
-                    audio_chunk = audio_queue.get_nowait()
+                    audio_chunk = await audio_queue.get()
                     yield speech.StreamingRecognizeRequest(audio_content=audio_chunk)
-                except queue.Empty:
-                    time.sleep(0.1)
+                except asyncio.CancelledError:
+                    break
         
-
-        responses = speech_client.streaming_recognize(streaming_config, request_generator())
-
         try:
-            #print("Streaming responses")
+            requests = request_generator()
+            try:
+                responses = speech_client.streaming_recognize(streaming_config, requests)
+            except Exception as e:
+                print(f"Error recognizing sgream: {e}")
+
             for response in responses:
                 if stop_event.is_set():
                     break
                 for result in response.results:
                     if result.is_final:
                         text = result.alternatives[0].transcript.strip()
-                        #print("Final text")
-                        return text  # Return the text instead of translating directly
-        except Exception as e:
-            print(f"Error in streaming recognition: {e}")
-            time.sleep(1)  # Small delay before retrying
-            return None
+                        asyncio.create_task(translate_and_broadcast(text))
 
-async def transcribe_and_translate():
-    """Async wrapper that handles the transcription and translation."""
-    while not stop_event.is_set():
-        #text = await asyncio.get_running_loop().run_in_executor(None, transcribe_loop)
-        text = await audio_queue.get()
-        if text:
-            await translate_and_broadcast(text)
+        except Exception as e:
+            print(f"Unanticipated error in streaming recognition: {e}")
+            await asyncio.sleep(1)  # Small delay before retrying
 
 async def transcribe_stream():
     #print("In transcribe_stream")

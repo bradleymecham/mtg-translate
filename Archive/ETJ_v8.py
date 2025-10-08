@@ -3,7 +3,7 @@ from google.cloud import speech, translate_v2 as translate
 import json
 import pyaudio
 import asyncio
-import concurrent
+import concurrent.futures
 import websockets
 import time
 import queue
@@ -13,7 +13,6 @@ import configparser
 import psutil
 import socket
 import ipaddress
-
 
 
 config = configparser.ConfigParser()
@@ -27,7 +26,7 @@ lang_name = config['TRANSLATION']['language_name']
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = google_credentials_json
 speech_client = speech.SpeechClient()
 translate_client = translate.Client()
-audio_queue = asyncio.Queue()
+audio_queue = queue.Queue()
 
 # WebSocket clients
 clients = set()
@@ -35,10 +34,40 @@ clients = set()
 # For elegant program exit
 stop_event = asyncio.Event()
 
+def get_interface_type(interface_name):
+    """Heuristically determine interface type based on common naming."""
+    name = interface_name.lower()
+    if "wi-fi" in name or "wlan" in name or "wifi" in name:
+        return "Wi-Fi"
+    elif "eth" in name or "en" in name:
+        return "Ethernet"
+    else:
+        return "Unknown"
+
+def get_ip_addresses():
+    addrs = psutil.net_if_addrs()
+    stats = psutil.net_if_stats()
+    result = []
+
+    for interface, addr_list in addrs.items():
+        if not stats.get(interface) or not stats[interface].isup:
+            continue
+
+        for addr in addr_list:
+            if addr.family == socket.AF_INET:
+                ip = addr.address
+                ip_obj = ipaddress.ip_address(ip)
+                if ip_obj.is_loopback or ip_obj.is_link_local:
+                    continue
+
+                interface_type = get_interface_type(interface)
+                result.append((interface, interface_type, ip))
+    return result
+
+
 async def wait_for_keypress():
     print("Press 'q' to quit.")
     while not stop_event.is_set():
-        #print("Waiting")
         try:
             key = await aioconsole.ainput()
             if key.strip().lower() == 'q':
@@ -65,9 +94,15 @@ async def broadcast_message(message):
     else:
         print("No clients connected to broadcast to.")
 
+# NEW: This is the synchronous function for translation that will run in a thread
+def synchronous_translate(text):
+    return translate_client.translate(text, target_language=lang_abbrev)['translatedText']
+
+# NEW: The async function now uses the executor for the translation call
 async def translate_and_broadcast(text):
-    translation = translate_client.translate(text, target_language=lang_abbrev)
-    translated_text = translation['translatedText']
+    loop = asyncio.get_running_loop()
+    # Offload the blocking translation call to the executor
+    translated_text = await loop.run_in_executor(None, synchronous_translate, text)
     print(f"English: {text}\n{lang_name}: {translated_text}")
     await broadcast_message(translated_text)
 
@@ -78,12 +113,11 @@ def audio_stream(loop):
     try:
         stream = audio.open(
             format=pyaudio.paInt16, channels=1, 
-            rate=16000, input=True, frames_per_buffer=1024,
-            input_device_index=1)
+            rate=16000, input=True, frames_per_buffer=1024)
         
         while not stop_event.is_set():
             try:
-                audio_chunk = stream.read(1024, exception_on_overflow=True)
+                audio_chunk = stream.read(1024, exception_on_overflow=False)
                 loop.call_soon_threadsafe(audio_queue.put_nowait, audio_chunk)
             except IOError as e:
                 print(f"IO Error: {e}")
@@ -95,68 +129,57 @@ def audio_stream(loop):
             stream.close()
         audio.terminate()
 
+async def transcribe_and_translate():
+    loop = asyncio.get_running_loop()
+    executor = concurrent.futures.ThreadPoolExecutor()
+    
+    config = speech.RecognitionConfig(
+        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+        sample_rate_hertz=16000,
+        language_code="en-US"
+    )
 
-def transcribe_loop():
-    #print("Transcribing loop")
+    streaming_config = speech.StreamingRecognitionConfig(
+        config=config,
+        interim_results=True
+    )
+
     while not stop_event.is_set():
-        #print("Starting new recognition setup")
-        config = speech.RecognitionConfig(
-            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=16000,
-            language_code="en-US"
-        )
-
-        streaming_config = speech.StreamingRecognitionConfig(
-            config=config,
-            interim_results=True
-        )
-
-        #print("Starting new recognition session")
-        start_time = time.time()
-
         def request_generator():
-            """Yields audio chunks from the queue."""
-            #print("Entered request generator")
+            yield speech.StreamingRecognizeRequest(streaming_config=streaming_config)
+            start_time = time.time()
             while not stop_event.is_set():
-                if time.time() - start_time > 290:  # Restart stream every 290s
-                    #print("Restarting stream...")
+                if time.time() - start_time > 290:
                     break
                 try:
-                    audio_chunk = audio_queue.get_nowait()
+                    audio_chunk = audio_queue.get(timeout=1)
                     yield speech.StreamingRecognizeRequest(audio_content=audio_chunk)
                 except queue.Empty:
-                    time.sleep(0.1)
+                    continue
+                except asyncio.CancelledError:
+                    break
         
-
-        responses = speech_client.streaming_recognize(streaming_config, request_generator())
-
         try:
-            #print("Streaming responses")
+            # NEW: The blocking `streaming_recognize` call is now properly in a thread.
+            responses = await loop.run_in_executor(
+                executor, 
+                lambda: speech_client.streaming_recognize(requests=request_generator())
+            )
+            
             for response in responses:
                 if stop_event.is_set():
                     break
                 for result in response.results:
                     if result.is_final:
                         text = result.alternatives[0].transcript.strip()
-                        #print("Final text")
-                        return text  # Return the text instead of translating directly
+                        # NEW: We now create a new task to handle the translation and broadcast
+                        asyncio.create_task(translate_and_broadcast(text))
         except Exception as e:
-            print(f"Error in streaming recognition: {e}")
-            time.sleep(1)  # Small delay before retrying
-            return None
-
-async def transcribe_and_translate():
-    """Async wrapper that handles the transcription and translation."""
-    while not stop_event.is_set():
-        #text = await asyncio.get_running_loop().run_in_executor(None, transcribe_loop)
-        text = await audio_queue.get()
-        if text:
-            await translate_and_broadcast(text)
-
-async def transcribe_stream():
-    #print("In transcribe_stream")
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, audio_stream)
+            if "Stream removed" in str(e):
+                print("Stream timed out. Restarting transcription session.")
+            else:
+                print(f"Error in streaming recognition: {e}")
+            await asyncio.sleep(1)
 
 def get_interface_type(interface_name):
     """Heuristically determine interface type based on common naming."""
@@ -175,14 +198,14 @@ def get_ip_addresses():
 
     for interface, addr_list in addrs.items():
         if not stats.get(interface) or not stats[interface].isup:
-            continue  # skip interfaces that are down
+            continue
 
         for addr in addr_list:
             if addr.family == socket.AF_INET:
                 ip = addr.address
                 ip_obj = ipaddress.ip_address(ip)
                 if ip_obj.is_loopback or ip_obj.is_link_local:
-                    continue  # skip 127.0.0.1 and 169.254.x.x
+                    continue
 
                 interface_type = get_interface_type(interface)
                 result.append((interface, interface_type, ip))
@@ -195,16 +218,13 @@ async def main():
     server = await websockets.serve(handler, "0.0.0.0", 8765)
     print("WebSocket server started on ws://localhost:8765")
     
-    # Create thread pool for synchronous operations
     loop = asyncio.get_running_loop()
     executor = concurrent.futures.ThreadPoolExecutor()
     
-    # Start audio streaming and transcription in separate tasks
     audio_task = loop.run_in_executor(executor, audio_stream, loop)
     transcribe_task = asyncio.create_task(transcribe_and_translate())
     
     try:
-        # Wait for keypress or tasks to complete
         await asyncio.gather(
             audio_task,
             transcribe_task,
@@ -213,20 +233,17 @@ async def main():
     except asyncio.CancelledError:
         pass
     finally:
-        # Cancel all tasks
         audio_task.cancel()
         transcribe_task.cancel()
         
-        # Shutdown the executor
         executor.shutdown(wait=True)
         
-        # Close the server
         server.close()
         await server.wait_closed()
         
-        # Clear the stop event
         stop_event.clear()
         
         print("Server stopped and resources cleaned up")
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
