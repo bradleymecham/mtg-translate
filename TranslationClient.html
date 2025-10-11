@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real-Time Multilingual Translator</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+        .controls { margin-bottom: 20px; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9; }
+        #translation-output {
+            font-size: 2.5em; /* Large text for easy viewing */
+            font-weight: bold;
+            color: #333;
+            min-height: 100px;
+            padding: 10px;
+            border: 2px solid #0056b3;
+            text-align: left;
+            white-space: pre-wrap;
+        }
+        .info { font-size: 0.9em; color: #666; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+    <h1>Real-Time Meeting Translator</h1>
+
+    <div class="controls">
+        <input type="text" id="ipAddress" value="192.168.108.9" placeholder="Enter Server IP Address" style="width: 200px; padding: 8px; margin-right: 10px;">
+        <button onclick="connectWebSocket()" style="padding: 8px 16px;">Connect</button>
+    </div>
+
+    <div class="controls">
+        <label for="language-select">Select Your Language:</label>
+        <select id="language-select">
+            <option value="es">Espanol</option>
+            <option value="fr">Fracais</option>
+            <option value="sw">Kiswahili</option>
+            <option value="ja">Japanese</option>
+            </select>
+    </div>
+
+    <div id="translation-output">Please enter the server IP and click Connect.</div>
+
+    <div class="info">
+        <p>Status: <span id="status">Disconnected</span></p>
+    </div>
+
+    <script>
+        const outputDiv = document.getElementById('translation-output');
+        const statusSpan = document.getElementById('status');
+        const languageSelect = document.getElementById('language-select');
+        const defaultPort = "8765";
+        let socket = null;
+        let selectedLanguage = languageSelect.value; 
+
+        // Update selected language when the dropdown changes
+        languageSelect.addEventListener('change', (event) => {
+            selectedLanguage = event.target.value;
+            outputDiv.innerHTML = "Language set to " + event.target.options[event.target.selectedIndex].text + ". Waiting for next translation...";
+        });
+
+        function connectWebSocket() {
+            if (socket) {
+                socket.close();
+            }
+
+            const ipAddress = document.getElementById("ipAddress").value.trim();
+            if (!ipAddress) {
+                alert("Please enter a valid IP address.");
+                return;
+            }
+            
+            const wsUrl = `ws://${ipAddress}:${defaultPort}`;
+            statusSpan.textContent = `Connecting to ${ipAddress}...`;
+            outputDiv.innerHTML = "Attempting to connect...";
+            
+            try {
+                socket = new WebSocket(wsUrl);
+            } catch (error) {
+                statusSpan.textContent = `Error connecting: ${error.message}`;
+                return;
+            }
+            
+            socket.onopen = function() {
+                statusSpan.textContent = "Connected";
+                outputDiv.innerHTML = "Connected. Select your language to begin receiving translations.";
+            };
+
+            socket.onmessage = function(event) {
+                try {
+                    // 1. The message is the first level JSON: {"text": "JSON_STRING"}
+                    const data = JSON.parse(event.data).text;
+                    
+                    // 2. Check for the 'New Talk' signal (which will be a string)
+                    if (data === "New Talk") {
+                        outputDiv.innerHTML = "--- NEW SPEAKER / TOPIC ---\n" + outputDiv.innerHTML;
+                        return;
+                    }
+
+                    // 3. The actual payload is the second level JSON string: {"language_code": "es", "text": "..."}
+                    const payload = JSON.parse(data);
+                    
+                    // 4. Filter the payload based on the user's selected language
+                    if (payload.language_code === selectedLanguage) {
+                        // 5. CRITICAL LOGIC: Check for initial/default messages to replace them
+                        const isInitialMessage = (
+                            outputDiv.innerHTML.includes("Connected. Select your language") ||
+                            (outputDiv.innerHTML.includes("Language set to") && outputDiv.innerHTML.includes("Waiting for next translation"))
+                        );
+
+                        if (isInitialMessage) {
+                            outputDiv.innerHTML = payload.text; // Replace the initial message
+                        } else {
+                            // Prepend the new translation followed by a newline
+                            outputDiv.innerHTML = payload.text + "\n" + outputDiv.innerHTML;
+                        } 
+                    } 
+
+                } catch (e) {
+                    console.error("Error processing message:", e, event.data);
+                }
+            };
+
+            socket.onclose = function() {
+                statusSpan.textContent = "Disconnected";
+                outputDiv.innerHTML = "Connection lost. Please try connecting again.";
+            };
+
+            socket.onerror = function(error) {
+                statusSpan.textContent = "Error";
+                outputDiv.innerHTML = "Error connecting to server. Please check IP address and try again.";
+            };
+        }
+    </script>
+</body>
+</html>
