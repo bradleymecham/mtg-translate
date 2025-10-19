@@ -10,6 +10,7 @@ import queue
 import aioconsole
 import configparser
 import sys
+import struct
 
 import psutil
 import socket
@@ -21,8 +22,16 @@ config.read('config.ini')
 
 google_credentials_json = config['AUTHENTICATION']['google_credentials_json']
 
-# NEW: Multi-language definitions for the server logic
+# Read num_channels with a safe default
+try:
+    CONFIGURED_CHANNELS = int(config['AUDIO']['num_channels'])
+except (KeyError, ValueError):
+    # Default to 1 channel
+    CONFIGURED_CHANNELS = 1
+
+# Multi-language definitions for the server logic
 TARGET_LANGUAGES = {
+    "en": "English",
     "es": "Spanish",
     "fr": "French",
     "sw": "Swahili",
@@ -112,15 +121,39 @@ def audio_stream(loop):
     global audio_queue
     audio = pyaudio.PyAudio()
     stream = None
+
+    FORMAT = pyaudio.paInt16
+    CHANNELS = CONFIGURED_CHANNELS
+    RATE = 16000
+    CHUNK = 1024
+
+
     try:
         stream = audio.open(
-            format=pyaudio.paInt16, channels=1,
-            rate=16000, input=True, frames_per_buffer=1024)
+            format=FORMAT,
+            channels=CHANNELS,
+            rate=RATE, 
+            input=True, 
+            frames_per_buffer=CHUNK)
 
         while not stop_event.is_set():
             try:
                 audio_chunk = stream.read(1024, exception_on_overflow=False)
-                loop.call_soon_threadsafe(audio_queue.put_nowait, audio_chunk)
+
+                mono_chunk = audio_chunk
+
+                if CHANNELS == 2:
+                    # Unpack the stereo data (2* CHUNK 16-bit shorts)
+                    data = struct.unpack('<' + str(2*CHUNK) + 'h', audio_chunk)
+
+                    # Extract only the right channel (every other sample, starting at 1)
+                    right_channel_data = data[1::2]
+                    
+                    # Repack the mono data back into a byte string
+                    mono_chunk = struct.pack('<' + str(CHUNK) + 'h', *right_channel_data)
+
+                # Send the resulting mono or isolated-right chunk to transcription
+                loop.call_soon_threadsafe(audio_queue.put_nowait, mono_chunk)
             except IOError as e:
                 print(f"IO Error: {e}")
     except Exception as e:
@@ -192,8 +225,12 @@ def transcribe_loop(loop):
 def synchronous_translate(text, lang_code):
     if text == "New Talk":
         return "New Talk"
-    # This is the actual synchronous, blocking call
-    # The client needs the exact translated text, so we only return that.
+    
+    # If the language is English, just return the transcribed text
+    if lang_code == "en":
+        return text
+
+    # Otherwise, perform the synchronous, blocking translation API call
     return translate_client.translate(text, target_language=lang_code)['translatedText']
 
 # FINAL STABLE LOGIC: Processes one language and broadcasts it
