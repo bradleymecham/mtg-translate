@@ -16,6 +16,16 @@ import psutil
 import socket
 import ipaddress
 
+# Multi-language definitions for the server logic
+LANGUAGE_MAP = {
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "sw": "Swahili",
+    "ja": "Japanese"
+    # Add future language codes here
+}
+
 # --- CONFIGURATION ---
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -29,14 +39,25 @@ except (KeyError, ValueError):
     # Default to 1 channel
     CONFIGURED_CHANNELS = 1
 
-# Multi-language definitions for the server logic
-TARGET_LANGUAGES = {
-    "en": "English",
-    "es": "Spanish",
-    "fr": "French",
-    "sw": "Swahili",
-    "ja": "Japanese"
-}
+# Read the comma-separated string from the config
+try:
+    language_codes_string = config['TRANSLATION']['target_language_codes']
+
+    codes_list = [code.strip() for code in language_codes_string.split(',')]
+
+    TARGET_LANGUAGES = {}
+    for code in codes_list:
+        # Look up the code in the master map
+        if code in LANGUAGE_MAP:
+            TARGET_LANGUAGES[code] = LANGUAGE_MAP[code]
+        else:
+            print(f"Warning: Language code {code} in config.ini is invalid and skipped.")
+
+except (KeyError, ValueError):
+    # Fallback to a safe default if the config entry is missing or invalid
+    print("Error: Valid 'target_language_codes' not found in config.ini. Defaulting to English.")
+    TARGET_LANGUAGES = {"en": "English"}
+
 # --- END CONFIGURATION ---
 
 # Google Cloud clients
