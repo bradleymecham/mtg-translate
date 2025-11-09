@@ -22,7 +22,8 @@ LANGUAGE_MAP = {
     "es": "Spanish",
     "fr": "French",
     "sw": "Swahili",
-    "ja": "Japanese"
+    "ja": "Japanese",
+    "zh-CN": "Chinese (PRC)"
     # Add future language codes here
 }
 
