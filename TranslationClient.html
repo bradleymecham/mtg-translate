@@ -112,7 +112,7 @@
                             outputDiv.innerHTML = payload.text; // Replace the initial message
                         } else {
                             // Prepend the new translation followed by a newline
-                            outputDiv.innerHTML = payload.text + "\n" + outputDiv.innerHTML;
+                            outputDiv.innerHTML = outputDiv.innerHTML + "\n" + payload.text;
                         } 
                     } 
 
