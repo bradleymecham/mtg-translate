@@ -23,7 +23,7 @@
     <h1>Real-Time Meeting Translator</h1>
 
     <div class="controls">
-        <input type="text" id="ipAddress" value="192.168.108.9" placeholder="Enter Server IP Address" style="width: 200px; padding: 8px; margin-right: 10px;">
+        <input type="text" id="ipAddress" placeholder="Server IP Address (auto-detected)" style="width: 200px; padding: 8px; margin-right: 10px;">
         <button onclick="connectWebSocket()" style="padding: 8px 16px;">Connect</button>
     </div>
 
@@ -31,27 +31,44 @@
         <label for="language-select">Select Your Language:</label>
         <select id="language-select">
             <option value="en">English</option>
-            <option value="es">Espanol</option>
-            <option value="fr">Fracais</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
             <option value="sw">Kiswahili</option>
             <option value="ja">Japanese</option>
 	    <option value="zh-CN">Chinese</option>
             </select>
     </div>
 
-    <div id="translation-output">Please enter the server IP and click Connect.</div>
+    <div id="translation-output">Connecting...</div>
 
     <div class="info">
-        <p>Status: <span id="status">Disconnected</span></p>
+        <p>Status: <span id="status">Initializing</span></p>
     </div>
 
     <script>
         const outputDiv = document.getElementById('translation-output');
         const statusSpan = document.getElementById('status');
         const languageSelect = document.getElementById('language-select');
+	const ipAddressInput = document.getElementById('ipAddress');
         const defaultPort = "8765";
         let socket = null;
         let selectedLanguage = languageSelect.value; 
+
+	// Auto-detect server IP from the page we loaded from
+	function getServerIP() {
+		// If we loaded this page from http://192.168.1.100:8080,
+		// the WebSocket shoul connect to 192.168.1.100:8765
+		return window.location.hostname;
+	}
+
+	// Auto-fill the IP address field
+	window.addEventListener('load', () => {
+		const detectedIP = getServerIP();
+		ipAddressInput.value = detectedIP;
+		ipAddressInput.placeholder = detectedIP || "Server IP";
+		// Auto-connect on page load
+		connectWebSocket();
+	});
 
         // Update selected language when the dropdown changes
         languageSelect.addEventListener('change', (event) => {
@@ -64,11 +81,11 @@
                 socket.close();
             }
 
-            const ipAddress = document.getElementById("ipAddress").value.trim();
+	    const ipAddress = ipAddressInput.value.trim() || getServerIP(); 
             if (!ipAddress) {
-                alert("Please enter a valid IP address.");
+                alert("Unable to detect server IP. Please enter manually.");
                 return;
-            }
+	    }
             
             const wsUrl = `ws://${ipAddress}:${defaultPort}`;
             statusSpan.textContent = `Connecting to ${ipAddress}...`;

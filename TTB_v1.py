@@ -16,6 +16,15 @@ import psutil
 import socket
 import ipaddress
 
+# These are for running a local http service
+from aiohttp import web
+import aiofiles
+
+# These are for mDNS, so we can call this
+# server 'captions.local' temporarily
+from zeroconf import ServiceInfo
+from zeroconf.asyncio import AsyncZeroconf
+
 # Multi-language definitions for the server logic
 LANGUAGE_MAP = {
     "en": "English",
@@ -103,6 +112,16 @@ def get_ip_addresses():
                 interface_type = get_interface_type(interface)
                 result.append((interface, interface_type, ip))
     return result
+
+# HTTP Server Handler
+async def http_handler(request):
+    # Serve the HTML client file
+    try:
+        async with aiofiles.open('TranslationClient.html', mode='r') as f:
+            html_content = await f.read()
+        return web.Response(text=html_content, content_type='text/html')
+    except FileNotFoundError:
+        return web.Response(text="TranslationClient.html not found", status=404)
 
 # --- ASYNC HANDLERS ---
 
@@ -310,11 +329,67 @@ def translate_loop(loop):
 # --- MAIN EXECUTION ---
 
 async def main():
-    for iface, iface_type, ip in get_ip_addresses():
+    print("\n=== Real-Time Translation Server ===")
+    print("\nAvailable network interfaces:")
+    
+    ip_addresses = get_ip_addresses()
+    for iface, iface_type, ip in ip_addresses:
         print(f"{iface} ({iface_type}): {ip}")
 
-    server = await websockets.serve(handler, "0.0.0.0", 8765)
-    print("WebSocket server started on ws://localhost:8765")
+    # Start mDNS broadcasting
+    zeroconf = AsyncZeroconf()
+
+    # Get the first non-loopback IP for mDNS registration
+    server_ip = None
+    http_info = None
+    ws_info = None
+    if ip_addresses:
+        server_ip = ip_addresses[0][2]  # Get IP from first interface
+
+        # Convert IP string to bytes
+        ip_bytes =  socket.inet_aton(server_ip)
+
+        # Register both HTTP and WebSocket services
+        http_info = ServiceInfo(
+            "_http._tcp.local.",
+            "Captions._http._tcp.local.",
+            addresses=[ip_bytes],
+            port=8080,
+            properties={'path': '/', 'version': '1.0'},
+            server="captions.local."
+        )
+
+        ws_info = ServiceInfo(
+            "_ws._tcp.local.",
+            "Captions._ws._tcp.local.",
+            addresses=[ip_bytes],
+            port=8765,
+            properties={'version': '1.0'},
+            server="captions.local."
+        )
+
+        await zeroconf.async_register_service(http_info)
+        await zeroconf.async_register_service(ws_info)
+        print(f"\n✓ mDNS services registered as 'captions.local' (IP: {server_ip})")
+    
+    # Start WebSocket server
+    ws_server = await websockets.serve(handler, "0.0.0.0", 8765)
+    print("\n✓ WebSocket server started on port 8765")
+
+    # Start HTTP server
+    app = web.Application()
+    app.router.add_get('/', http_handler)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 8080)
+    await site.start()
+    print("\n✓ HTTP server started on port 8080")
+
+    print("\nClients can connect by visiting:")
+    print("  http://captions.local:8080  (recommended)")
+    for iface, iface_type, ip in ip_addresses:
+        print(f"  http://{ip}:8080")
+    print("\n")
 
     loop = asyncio.get_running_loop()
     executor = concurrent.futures.ThreadPoolExecutor()
@@ -340,8 +415,16 @@ async def main():
 
         executor.shutdown(wait=True)
 
-        server.close()
-        await server.wait_closed()
+        ws_server.close()
+        await ws_server.wait_closed()
+
+        await runner.cleanup()
+
+        # Unregister mDNS services
+        if server_ip and http_info and ws_info:
+            await zeroconf.async_unregister_service(http_info)
+            await zeroconf.async_unregister_service(ws_info)
+        await zeroconf.async_close()
 
         stop_event.clear()
 
