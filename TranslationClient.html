@@ -10,10 +10,12 @@
             font-weight: bold;
             color: #333;
             min-height: 100px;
+	    max-height: 60vh; /* 60% of viewport height */
             padding: 10px;
             border: 2px solid #0056b3;
             text-align: left;
             white-space: pre-wrap;
+	    overflow-y: auto;
         }
         .info { font-size: 0.9em; color: #666; margin-top: 15px; }
     </style>
@@ -111,6 +113,7 @@
                     // 2. Check for the 'New Talk' signal (which will be a string)
                     if (data === "New Talk") {
                         outputDiv.innerHTML = "--- NEW SPEAKER / TOPIC ---\n" + outputDiv.innerHTML;
+			outputDiv.scrollTop = outputDiv.scrollHeight; // Auto-scroll to bottom
                         return;
                     }
 
@@ -131,6 +134,9 @@
                             // Prepend the new translation followed by a newline
                             outputDiv.innerHTML = outputDiv.innerHTML + "\n" + payload.text;
                         } 
+
+			// Auto-scroll to bottom after adding new text
+                        outputDiv.scrollTop = outputDiv.scrollHeight;
                     } 
 
                 } catch (e) {
