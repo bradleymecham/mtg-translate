@@ -4,19 +4,47 @@
     <title>Real-Time Multilingual Translator</title>
     <style>
         body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
-        .controls { margin-bottom: 20px; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9; }
+        .controls {
+            margin-bottom: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background-color: #f9f9f9;
+            margin-left: auto;
+            margin-right: auto;
+            max-width: 95%;
+            box-sizing: border-box;
+            border-radius: 8px;
+        }
         #translation-output {
-            font-size: 2.5em; /* Large text for easy viewing */
+            display: flex;
+            flex-direction: column;
+            font-size: 2.2em; /* Large text for easy viewing */
             font-weight: bold;
             color: #333;
             min-height: 100px;
-	    max-height: 60vh; /* 60% of viewport height */
-            padding: 10px;
+            max-height: 70vh; /* 60% of viewport height */
+            padding: 20px;
             border: 2px solid #0056b3;
             text-align: left;
+            overflow-y: auto;
+            margin: 0 auto;
+            max-width: 95%;
+            box-sizing: border-box;
             white-space: pre-wrap;
-	    overflow-y: auto;
         }
+
+        /* New styles for bold/gray logic */
+        .translation-entry {
+            color: #888; /* Gray for old text */
+            margin-bottom: 15px;
+        }
+
+        /* Automatically styles the NEWEST item at the top */
+        .translation-entry:first-child {
+            color: #000; /* Bold black for new text */
+            font-weight: bold;
+        }
+
         .info { font-size: 0.9em; color: #666; margin-top: 15px; }
     </style>
 </head>
@@ -33,7 +61,7 @@
         <label for="language-select">Select Your Language:</label>
         <select id="language-select">
 	    <option value="zh-CN">Chinese</option>
-            <option value="en">English</option>
+            <option value="en" selected>English</option>
             <option value="es">Español</option>
             <option value="fr">Français</option>
             <option value="ja">Japanese</option>
@@ -112,8 +140,9 @@
                     
                     // 2. Check for the 'New Talk' signal (which will be a string)
                     if (data === "New Talk") {
-                        outputDiv.innerHTML = "--- NEW SPEAKER / TOPIC ---\n" + outputDiv.innerHTML;
-			outputDiv.scrollTop = outputDiv.scrollHeight; // Auto-scroll to bottom
+                        // Using a dashed line to separate topics
+                        outputDiv.insertAdjacentHTML('afterbegin', '<hr style="width:100%; border:1px dashed #ccc; margin: 20px 0;">');
+                        outputDiv.scrollTop = 0;
                         return;
                     }
 
@@ -122,21 +151,26 @@
                     
                     // 4. Filter the payload based on the user's selected language
                     if (payload.language_code === selectedLanguage) {
-                        // 5. CRITICAL LOGIC: Check for initial/default messages to replace them
+                        // 5. Check for initial/default messages to replace them
                         const isInitialMessage = (
-                            outputDiv.innerHTML.includes("Connected. Select your language") ||
-                            (outputDiv.innerHTML.includes("Language set to") && outputDiv.innerHTML.includes("Waiting for next translation"))
+                            outputDiv.innerHTML.includes("Connected. Select your language") || (
+                                outputDiv.innerHTML.includes("Language set to") && 
+                                outputDiv.innerHTML.includes("Waiting for next translation")) ||
+                            outputDiv.innerHTML.includes("Attempting to connect...")
                         );
 
                         if (isInitialMessage) {
-                            outputDiv.innerHTML = payload.text; // Replace the initial message
-                        } else {
-                            // Prepend the new translation followed by a newline
-                            outputDiv.innerHTML = payload.text + "\n- " + outputDiv.innerHTML;
+                            outputDiv.innerHTML = ""; // Clear status messages before inserting real text
                         } 
+ 
+                        // Create the entry. The CSS handles the bolding/graying automatically.
+                        const html = `<div class="translation-entry">${payload.text}</div>`;
+ 
+                        // Prepend the new translation
+                        outputDiv.insertAdjacentHTML('afterbegin', html);
 
-			// Auto-scroll to bottom after adding new text
-                        outputDiv.scrollTop = outputDiv.scrollHeight;
+                        // Since new text is at the top, we scroll to the top
+                        outputDiv.scrollTop = 0;
                     } 
 
                 } catch (e) {
