@@ -32,12 +32,12 @@
     <div class="controls">
         <label for="language-select">Select Your Language:</label>
         <select id="language-select">
+	    <option value="zh-CN">Chinese</option>
             <option value="en">English</option>
             <option value="es">Español</option>
             <option value="fr">Français</option>
-            <option value="sw">Kiswahili</option>
             <option value="ja">Japanese</option>
-	    <option value="zh-CN">Chinese</option>
+            <option value="sw">Kiswahili</option>
             </select>
     </div>
 
@@ -132,7 +132,7 @@
                             outputDiv.innerHTML = payload.text; // Replace the initial message
                         } else {
                             // Prepend the new translation followed by a newline
-                            outputDiv.innerHTML = outputDiv.innerHTML + "\n" + payload.text;
+                            outputDiv.innerHTML = payload.text + "\n- " + outputDiv.innerHTML;
                         } 
 
 			// Auto-scroll to bottom after adding new text
