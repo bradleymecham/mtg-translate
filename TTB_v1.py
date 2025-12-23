@@ -42,14 +42,15 @@ config.read('config.ini')
 
 google_credentials_json = config['AUTHENTICATION']['google_credentials_json']
 
-# Read num_channels with a safe default
+# Stereo audio inputs can have more than one channel
+# Read num_channels from config file with a safe default
 try:
     CONFIGURED_CHANNELS = int(config['AUDIO']['num_channels'])
 except (KeyError, ValueError):
     # Default to 1 channel
     CONFIGURED_CHANNELS = 1
 
-# Read the comma-separated string from the config
+# Read the comma-separated string of language codes from the config
 try:
     language_codes_string = config['TRANSLATION']['target_language_codes']
 
@@ -61,11 +62,15 @@ try:
         if code in LANGUAGE_MAP:
             TARGET_LANGUAGES[code] = LANGUAGE_MAP[code]
         else:
-            print(f"Warning: Language code {code} in config.ini is invalid and skipped.")
+            print(
+                "Warning: Language code {code} in config.ini "
+                "is invalid and skipped.")
 
 except (KeyError, ValueError):
     # Fallback to a safe default if the config entry is missing or invalid
-    print("Error: Valid 'target_language_codes' not found in config.ini. Defaulting to English.")
+    print(
+        "Error: Valid 'target_language_codes' not found in config.ini. "
+        "Defaulting to English.")
     TARGET_LANGUAGES = {"en": "English"}
 
 # --- END CONFIGURATION ---
@@ -75,9 +80,10 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = google_credentials_json
 speech_client = speech.SpeechClient()
 translate_client = translate.Client()
 
-# Queues for inter-thread communication (the stable architecture)
+# Queues for inter-thread communication
 audio_queue = queue.Queue()
-translation_request_queue = queue.Queue() # Sync queue for English text awaiting translation
+# Sync queue for English text awaiting translation
+translation_request_queue = queue.Queue()
 
 # WebSocket clients
 clients = set()
@@ -151,8 +157,9 @@ async def handler(websocket):
 async def broadcast_message(message):
     """Sends the JSON payload string to all connected clients."""
     if clients:
-        # Note: 'message' is already the final JSON string, so we send it directly
-        await asyncio.wait([asyncio.create_task(client.send(message)) for client in clients])
+        # Note: 'message' is already the final JSON string; send it directly
+        await asyncio.wait([asyncio.create_task(client.send(message)) 
+            for client in clients])
     else:
         pass 
 
@@ -187,13 +194,14 @@ def audio_stream(loop):
                     # Unpack the stereo data (2* CHUNK 16-bit shorts)
                     data = struct.unpack('<' + str(2*CHUNK) + 'h', audio_chunk)
 
-                    # Extract only the right channel (every other sample, starting at 1)
+                    # Extract right channel (every other sample, starting at 1)
                     right_channel_data = data[1::2]
                     
                     # Repack the mono data back into a byte string
-                    mono_chunk = struct.pack('<' + str(CHUNK) + 'h', *right_channel_data)
-
-                # Send the resulting mono or isolated-right chunk to transcription
+                    mono_chunk = (
+                        struct.pack('<' + str(CHUNK) + 'h', *right_channel_data)
+                    )
+                # Send resulting mono or isolated-right chunk to transcription
                 loop.call_soon_threadsafe(audio_queue.put_nowait, mono_chunk)
             except IOError as e:
                 print(f"IO Error: {e}")
@@ -223,15 +231,19 @@ def transcribe_loop(loop):
         def audio_requests_generator():
             try:
                 first_audio_chunk = audio_queue.get(timeout=5)
-                yield speech.StreamingRecognizeRequest(audio_content=first_audio_chunk)
+                yield speech.StreamingRecognizeRequest(
+                    audio_content=first_audio_chunk)
             except queue.Empty:
-                print("Waited for 5 seconds but no audio was received. Restarting recognition.")
+                print(
+                    "Waited for 5 seconds but no audio was received. "
+                    "Restarting recognition.")
                 return
 
             while not stop_event.is_set() and time.time() - start_time < 290:
                 try:
                     audio_chunk = audio_queue.get(timeout=1)
-                    yield speech.StreamingRecognizeRequest(audio_content=audio_chunk)
+                    yield speech.StreamingRecognizeRequest(
+                        audio_content=audio_chunk)
                 except queue.Empty:
                     continue
 
@@ -246,9 +258,10 @@ def transcribe_loop(loop):
                     break
                 for result in response.results:
                     if result.is_final:
-                        original_text = result.alternatives[0].transcript.strip()
+                        original_text = (
+                            result.alternatives[0].transcript.strip())
                         
-                        # CRITICAL ADDITION: Print English transcription safely on the main loop
+                        # Print transcription safely on the main loop
                         print_english = lambda text: print(f"English: {text}")
                         loop.call_soon_threadsafe(print_english, original_text)
                         
@@ -272,29 +285,32 @@ def synchronous_translate(text, lang_code):
         return text
 
     # Otherwise, perform the synchronous, blocking translation API call
-    return translate_client.translate(text, target_language=lang_code)['translatedText']
+    return translate_client.translate(
+        text, target_language=lang_code)['translatedText']
 
 # FINAL STABLE LOGIC: Processes one language and broadcasts it
 def process_and_broadcast_single_lang(loop, original_text, lang_code, lang_name):
     # 1. Perform blocking translation for a single language
     translated_text = synchronous_translate(original_text, lang_code)
     
-    # 2. Create the JSON payload (language code is mandatory for client filtering)
+    # 2. Create JSON payload (language code is mandatory for client filtering)
     # The client expects a JSON string containing the language payload,
     # so we nest the JSON strings.
     payload = {
         "language_code": lang_code,
         "text": translated_text
     }
-    # The message sent is the first level JSON (containing the second level JSON string)
+    # Message sent is first level JSON (containing the second level JSON string)
     message_to_send = json.dumps({"text": json.dumps(payload)})
     
-    # 3. CRITICAL ADJUSTMENT: Print only the translation (safely)
-    print_translation = lambda name, text: print(f"{name} [{lang_code}]: {text}")
+    # 3. Print only the translation (safely)
+    print_translation = (
+        lambda name, text: print(f"{name} [{lang_code}]: {text}"))
     loop.call_soon_threadsafe(print_translation, lang_name, translated_text)
     
     # 4. Safely schedule and WAIT for the async broadcast to finish
-    future = asyncio.run_coroutine_threadsafe(broadcast_message(message_to_send), loop)
+    future = asyncio.run_coroutine_threadsafe(
+        broadcast_message(message_to_send), loop)
     
     try:
         # .result() waits for the network write to finish
@@ -312,11 +328,12 @@ def translate_loop(loop):
             # Pull transcription result from the request queue
             original_text = translation_request_queue.get(timeout=1)
             
-            # CRITICAL CHANGE: Loop through all languages and process/broadcast each immediately
+            # Loop through all languages and process/broadcast each immediately
             for lang_code, lang_name in TARGET_LANGUAGES.items():
                 
-                # Each translation/broadcast is handled in this synchronous function call.
-                process_and_broadcast_single_lang(loop, original_text, lang_code, lang_name)
+                # Each broadcast is handled in this synchronous function call.
+                process_and_broadcast_single_lang(
+                    loop, original_text, lang_code, lang_name)
                 
             translation_request_queue.task_done()
         except queue.Empty:
@@ -370,7 +387,7 @@ async def main():
 
         await zeroconf.async_register_service(http_info)
         await zeroconf.async_register_service(ws_info)
-        print(f"\n✓ mDNS services registered as 'captions.local' (IP: {server_ip})")
+        print(f"\n✓ mDNS registered as 'captions.local' (IP: {server_ip})")
     
     # Start WebSocket server
     ws_server = await websockets.serve(handler, "0.0.0.0", 8765)
@@ -397,8 +414,8 @@ async def main():
     # Start all three main threads in the executor
     audio_task = loop.run_in_executor(executor, audio_stream, loop)
     transcribe_task = loop.run_in_executor(executor, transcribe_loop, loop)
-    translate_task = loop.run_in_executor(executor, translate_loop, loop) # Dedicated translation thread
-
+    # Dedicated translation thread
+    translate_task = loop.run_in_executor(executor, translate_loop, loop)
     try:
         await asyncio.gather(
             audio_task,
