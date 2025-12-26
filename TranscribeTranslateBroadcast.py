@@ -123,8 +123,9 @@ def get_ip_addresses():
 async def http_handler(request):
     # Serve the HTML client file
     try:
-        async with aiofiles.open('TranslationClient.html', mode='r') as f:
-            html_content = await f.read()
+        async with aiofiles.open('static/TranslationClient.html',
+            mode='r') as f:
+                html_content = await f.read()
         return web.Response(text=html_content, content_type='text/html')
     except FileNotFoundError:
         return web.Response(text="TranslationClient.html not found", status=404)
