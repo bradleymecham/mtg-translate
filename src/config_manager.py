@@ -18,7 +18,7 @@ class ConfigManager:
                 self.config['AUTHENTICATION']['google_credentials_json'])
 
         except (KeyError, ValueError):
-            print(f"Google Credentials value required")
+            print("Google Credentials value required")
             raise
             
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = self.google_credentials
@@ -35,6 +35,8 @@ class ConfigManager:
             "en": "English",
             "fr": "French",
             "ja": "Japanese",
+            "ru": "Russian",
+            "pt": "Portuguese",
             "es": "Spanish",
             "sw": "Swahili" 
             # Add future language codes here
@@ -46,9 +48,9 @@ class ConfigManager:
                 self.config['TRANSLATION']['target_language_codes'])
         except (KeyError, ValueError):
             print(
-                "Error: Valid 'target_language_codes' not found in config.ini. "
+                "Valid 'target_language_codes' not found in config.ini. "
                 "Defaulting to English.")
-            raw_codes = {"en"}
+            raw_codes = "en"
 
         self.target_languages = {
             code.strip(): self.LANGUAGE_MAP[code.strip()] 
