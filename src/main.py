@@ -7,16 +7,23 @@ from transcription import TranscriptionEngine
 from translation import TranslationEngine
 from networking import NetworkServer
 
-async def wait_for_keypress(stop_event, translation_queue):
-    print("Press 'q' to quit.")
+async def wait_for_keypress(stop_event, translation_queue, cfg, transcriber):
+    print("Commands: 'q' to quit, 'nt' for New Talk,"
+        "or a lang code (e.g., 'es', 'en', 'fr','cn','sw')")
     while not stop_event.is_set():
         try:
-            key = await aioconsole.ainput()
-            if key.strip().lower() == 'q':
+            user_input = (await aioconsole.ainput()).strip().lower()
+            if user_input == 'q':
                 stop_event.set()
                 break
-            elif key.strip().lower() == 'nt':
+            elif user_input == 'nt':
                 translation_queue.put("New Talk")
+            elif user_input in cfg.LANGUAGE_MAP:
+                print(f"Switching transcription to: {cfg.LANGUAGE_MAP[user_input].display_name}")
+                cfg.curr_lang = user_input # Update the shared config
+                transcriber.restart_signal() # Trigger restart in other threads
+            else:
+                print(f"Unknown command or language code: {user_input}")
         except Exception as e:
             print(f"Error reading input: {e}")
 
@@ -42,7 +49,7 @@ async def main():
         loop.run_in_executor(executor, transcriber.audio_stream, loop),
         loop.run_in_executor(executor, transcriber.transcribe_loop, loop),
         loop.run_in_executor(executor, translator.translate_loop, loop),
-        wait_for_keypress(stop_event, translation_queue)
+        wait_for_keypress(stop_event, translation_queue, cfg, transcriber)
     ]
     
 

@@ -11,6 +11,13 @@ class TranscriptionEngine:
         self.stop_event = stop_event
         self.audio_queue = queue.Queue() # Now internal to this class
         self.speech_client = speech.SpeechClient()
+        self._restart_signal = "RESTART_STREAM" 
+        self.last_audio_received_time = time.time()
+
+    def restart_signal(self):
+        """Public method to trigger a stream restart."""
+        print("Restarting transcription stream for language change...")
+        self.audio_queue.put(self._restart_signal)
 
     # Function for processing the audio stream
     def audio_stream(self, loop):
@@ -68,39 +75,50 @@ class TranscriptionEngine:
 
     # Function for transcribing the audio
     def transcribe_loop(self, loop):
-        config = speech.RecognitionConfig(
-            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=16000,
-            language_code="en-US"
-        )
-
-        streaming_config = speech.StreamingRecognitionConfig(
-            config=config,
-            interim_results=True
-        )
-
         while not self.stop_event.is_set():
+            curr_lang = self.config.LANGUAGE_MAP[self.config.curr_lang]
+            curr_lang_code = curr_lang.speech_code
+
+            print(f"--- Starting Stream: {curr_lang.display_name} ({curr_lang.speech_code}) ---")
+        
+            config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+                sample_rate_hertz=16000,
+                language_code=curr_lang_code
+            )
+
+            streaming_config = speech.StreamingRecognitionConfig(
+                config=config,
+                interim_results=True
+            )
+
             start_time = time.time()
+            STREAM_LIMIT = 290
 
             def audio_requests_generator():
-                try:
-                    first_audio_chunk = self.audio_queue.get(timeout=5)
-                    yield speech.StreamingRecognizeRequest(
-                        audio_content=first_audio_chunk)
-                except queue.Empty:
-                    print(
-                        "Waited for 5 seconds but no audio was received. "
-                        "Restarting recognition.")
-                    return
-
-                while not (
-                        self.stop_event.is_set() and 
-                        time.time() - start_time < 290):
+                while not self.stop_event.is_set():
+                    if time.time() - start_time >= STREAM_LIMIT:
+                        print("Reached Google 5-minute limit. Refreshing stream...")
+                        return # Exit generator to trigger a fresh stream
                     try:
-                        audio_chunk = self.audio_queue.get(timeout=1)
+                        chunk = self.audio_queue.get(timeout=1)
+
+                        # POISON PILL CHECK
+                        if chunk == self._restart_signal:
+                            return
+
+                        self.last_audio_received_time = time.time()
+
                         yield speech.StreamingRecognizeRequest(
-                            audio_content=audio_chunk)
+                            audio_content=chunk)
+                    
                     except queue.Empty:
+                        if time.time() - self.last_audio_received_time > 5:
+                            loop.call_soon_threadsafe(print,
+                                "Waited for 5 seconds but no audio "
+                                "was received. Check input source. "
+                                "Restarting recognition.")
+                            self.last_audio_received_time = time.time()
                         continue
 
             try:
@@ -118,15 +136,15 @@ class TranscriptionEngine:
                                 result.alternatives[0].transcript.strip())
                         
                             # Print transcription safely on the main loop
-                            print_english = (
-                                    lambda text: print(f"English: {text}"))
-                            loop.call_soon_threadsafe(print_english, 
+                            print_transcript = (
+                                lambda text: print(f"Transcription: {text}"))
+                            loop.call_soon_threadsafe(print_transcript,
                                                       original_text)
                         
                             # Send result to the translation thread queue
                             self.translation_queue.put(original_text)
             except Exception as e:
-                if "Stream removed" in str(e):
+                if "Stream removed" in str(e) or "Deadline Exceeded" in str(e):
                     print("Stream timed out. Restarting transcription session.")
                 else:
                     print(f"Error in streaming recognition: {e}")
