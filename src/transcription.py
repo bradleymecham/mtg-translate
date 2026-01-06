@@ -12,11 +12,19 @@ class TranscriptionEngine:
         self.audio_queue = queue.Queue() # Now internal to this class
         self.speech_client = speech.SpeechClient()
         self._restart_signal = "RESTART_STREAM" 
+        # This tracks the last time input audio was received
         self.last_audio_received_time = time.time()
+        # This tracks the last time we heard from Google re transcription
+        self.last_google_response_time = time.time()
 
     def restart_signal(self):
         """Public method to trigger a stream restart."""
         print("Restarting transcription stream for language change...")
+        while not self.audio_queue.empty():
+            try:
+                self.audio_queue.get_nowait()
+            except queue.Empty:
+                break
         self.audio_queue.put(self._restart_signal)
 
     # Function for processing the audio stream
@@ -52,7 +60,7 @@ class TranscriptionEngine:
 
                         # Extract right channel (every other sample, start at 1)
                         right_channel_data = data[1::2]
-                    
+ 
                         # Repack the mono data back into a byte string
                         mono_chunk = (
                             struct.pack('<' + str(CHUNK) + 'h', 
@@ -80,7 +88,7 @@ class TranscriptionEngine:
             curr_lang_code = curr_lang.speech_code
 
             print(f"--- Starting Stream: {curr_lang.display_name} ({curr_lang.speech_code}) ---")
-        
+ 
             config = speech.RecognitionConfig(
                 encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
                 sample_rate_hertz=16000,
@@ -93,13 +101,28 @@ class TranscriptionEngine:
             )
 
             start_time = time.time()
+            # Reset for the new stream
+            self.last_google_response_time = time.time() 
             STREAM_LIMIT = 290
 
             def audio_requests_generator():
                 while not self.stop_event.is_set():
-                    if time.time() - start_time >= STREAM_LIMIT:
+                    now = time.time()
+
+                    if now - start_time >= STREAM_LIMIT:
                         print("Reached Google 5-minute limit. Refreshing stream...")
                         return # Exit generator to trigger a fresh stream
+ 
+                    # If we have been sending audio for > 10s but Google hasn't
+                    # sent a single interim or final result back, it's stuck.
+                    if ((now - self.last_audio_received_time < 2) and 
+                        (now - self.last_google_response_time > 10)):
+
+                        loop.call_soon_threadsafe(print, 
+                            "!!! Stream Stall Detected (Language Mismatch). "
+                            "Restarting...")
+                        return # This kills the current gRPC session
+
                     try:
                         chunk = self.audio_queue.get(timeout=1)
 
@@ -107,18 +130,19 @@ class TranscriptionEngine:
                         if chunk == self._restart_signal:
                             return
 
-                        self.last_audio_received_time = time.time()
+                        self.last_audio_received_time = now
 
                         yield speech.StreamingRecognizeRequest(
                             audio_content=chunk)
-                    
+ 
                     except queue.Empty:
-                        if time.time() - self.last_audio_received_time > 5:
+
+                        if now - self.last_audio_received_time > 5:
                             loop.call_soon_threadsafe(print,
                                 "Waited for 5 seconds but no audio "
                                 "was received. Check input source. "
                                 "Restarting recognition.")
-                            self.last_audio_received_time = time.time()
+                            self.last_audio_received_time = now
                         continue
 
             try:
@@ -128,19 +152,33 @@ class TranscriptionEngine:
                 )
 
                 for response in responses:
+ 
+                    # Note the return fom Google
+                    self.last_google_response_time = time.time() 
+
                     if self.stop_event.is_set():
                         break
+
+                    # Record that Google sent something
+                    self.last_google_response_time = time.time()
+
                     for result in response.results:
+                        if not result.is_final:
+                            # Show what Google is "thinking" in real-time
+                            # Useful for debugging
+                            #loop.call_soon_threadsafe(print, 
+                            #    f"Interim: {result.alternatives[0].transcript}")
+                            pass
                         if result.is_final:
                             original_text = (
                                 result.alternatives[0].transcript.strip())
-                        
+ 
                             # Print transcription safely on the main loop
                             print_transcript = (
                                 lambda text: print(f"Transcription: {text}"))
                             loop.call_soon_threadsafe(print_transcript,
                                                       original_text)
-                        
+ 
                             # Send result to the translation thread queue
                             self.translation_queue.put(original_text)
             except Exception as e:

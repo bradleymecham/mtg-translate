@@ -8,8 +8,9 @@ from translation import TranslationEngine
 from networking import NetworkServer
 
 async def wait_for_keypress(stop_event, translation_queue, cfg, transcriber):
-    print("Commands: 'q' to quit, 'nt' for New Talk,"
-        "or a lang code (e.g., 'es', 'en', 'fr','cn','sw')")
+    langs = ", ".join(cfg.LANGUAGE_MAP.keys())
+    print(f"Commands: 'q' to quit, 'nt' for New Talk, or a lang code ({langs})")
+
     while not stop_event.is_set():
         try:
             user_input = (await aioconsole.ainput()).strip().lower()
