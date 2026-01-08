@@ -119,7 +119,7 @@ class TranscriptionEngine:
                         (now - self.last_google_response_time > 10)):
 
                         loop.call_soon_threadsafe(print, 
-                            "!!! Stream Stall Detected (Language Mismatch). "
+                            "--- Stream Stall Detected (Potential language mismatch). "
                             "Restarting...")
                         return # This kills the current gRPC session
 
@@ -174,10 +174,12 @@ class TranscriptionEngine:
                                 result.alternatives[0].transcript.strip())
  
                             # Print transcription safely on the main loop
-                            print_transcript = (
-                                lambda text: print(f"Transcription: {text}"))
-                            loop.call_soon_threadsafe(print_transcript,
-                                                      original_text)
+                            if self.config.debug_mode:
+                                 print_transcript = (
+                                      lambda text: 
+                                      print(f"Orig.: {text}"))
+                                 loop.call_soon_threadsafe(print_transcript,
+                                                           original_text)
  
                             # Send result to the translation thread queue
                             self.translation_queue.put(original_text)

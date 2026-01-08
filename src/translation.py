@@ -47,10 +47,12 @@ class TranslationEngine:
         message_to_send = json.dumps({"text": json.dumps(payload)})
 
         # Print only the translation
-        print_translation = (
-            lambda name, text: print(f"{name} [{dest_code}]: {text}"))
-        loop.call_soon_threadsafe(print_translation, lang_name, 
-                                  translated_text)
+        if self.config.debug_mode:
+            print_translation = (
+                lambda name, lang_code, text: 
+                print(f"{name} [{lang_code}]: {text}"))
+            loop.call_soon_threadsafe(print_translation, lang_name, dest_code, 
+                                      translated_text)
 
         # Safely schedule and WAIT for the async broadcast to finish
         future = asyncio.run_coroutine_threadsafe(

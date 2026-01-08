@@ -2,6 +2,7 @@ import asyncio
 import queue
 import aioconsole
 import concurrent.futures
+import argparse
 from config_manager import ConfigManager
 from transcription import TranscriptionEngine
 from translation import TranslationEngine
@@ -30,6 +31,12 @@ async def wait_for_keypress(stop_event, translation_queue, cfg, transcriber):
 
 
 async def main():
+    # 0. Set up argument parsing
+    parser = argparse.ArgumentParser(description="Church Translation System")
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help="Enable debug mode (print transcripts to console)")
+    args = parser.parse_args()
+
     # 1. Setup shared resources
     stop_event = asyncio.Event()
     translation_queue = queue.Queue()
@@ -38,6 +45,8 @@ async def main():
 
     # 2. Initialize modules
     cfg = ConfigManager()
+    cfg.debug_mode = args.verbose
+
     net = NetworkServer()
     transcriber = TranscriptionEngine(cfg, translation_queue, stop_event)
     translator = TranslationEngine(cfg, translation_queue, net, stop_event)
