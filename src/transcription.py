@@ -12,6 +12,7 @@ class TranscriptionEngine:
         self.audio_queue = queue.Queue() # Now internal to this class
         self.speech_client = speech.SpeechClient()
         self._restart_signal = "RESTART_STREAM" 
+        self.is_paused = False
         # This tracks the last time input audio was received
         self.last_audio_received_time = time.time()
         # This tracks the last time we heard from Google re transcription
@@ -26,6 +27,11 @@ class TranscriptionEngine:
             except queue.Empty:
                 break
         self.audio_queue.put(self._restart_signal)
+
+    def toggle_pause(self):
+        self.is_paused = not self.is_paused
+        state = "PAUSED" if self.is_paused else "ACTIVE"
+        print(f"*** Transcription is now {state} ***")
 
     # Function for processing the audio stream
     def audio_stream(self, loop):
@@ -87,7 +93,10 @@ class TranscriptionEngine:
             curr_lang = self.config.LANGUAGE_MAP[self.config.curr_lang]
             curr_lang_code = curr_lang.speech_code
 
-            print(f"--- Starting Stream: {curr_lang.display_name} ({curr_lang.speech_code}) ---")
+            if not self.is_paused:
+                print("--- Starting Stream: "
+                      f"{curr_lang.display_name} "
+                      f"({curr_lang.speech_code}) ---")
  
             config = speech.RecognitionConfig(
                 encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
@@ -129,6 +138,13 @@ class TranscriptionEngine:
                         # POISON PILL CHECK
                         if chunk == self._restart_signal:
                             return
+
+                        # If paused, don't yield the audio to Google
+                        if self.is_paused:
+                            now = time.time()
+                            self.last_audio_received_time = now
+                            self.last_google_response_time = now
+                            continue
 
                         self.last_audio_received_time = now
 
@@ -184,9 +200,25 @@ class TranscriptionEngine:
                             # Send result to the translation thread queue
                             self.translation_queue.put(original_text)
             except Exception as e:
-                if "Stream removed" in str(e) or "Deadline Exceeded" in str(e):
-                    print("Stream timed out. Restarting transcription session.")
+                err_str = str(e)
+                # Define common strings for "expected" stream closures
+                expected_errors = [
+                    "Stream removed",
+                    "Deadline Exceeded",
+                    "Audio Timeout Error"
+                ]
+                # Check if this is one of those expected closures
+                is_expected = any(msg in err_str for msg in expected_errors)
+
+                if is_expected:
+                    # If we aren't paused, a quick status update is helpful.
+                    # If we ARE paused, we stay silent because this is normal.
+                    if not self.is_paused:
+                        print("Stream timed out or limit reached. "
+                              "Restarting session...")
                 else:
+                    # If something else (like a real network failure), print it.
                     print(f"Error in streaming recognition: {e}")
+                # Brief cooldown before the loop restarts the stream
                 time.sleep(1)
         pass

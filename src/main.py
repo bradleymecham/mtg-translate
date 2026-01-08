@@ -10,7 +10,8 @@ from networking import NetworkServer
 
 async def wait_for_keypress(stop_event, translation_queue, cfg, transcriber):
     langs = ", ".join(cfg.LANGUAGE_MAP.keys())
-    print(f"Commands: 'q' to quit, 'nt' for New Talk, or a lang code ({langs})")
+    print("Commands: 'q' to quit, 'nt' for New Talk, 'p':pause/resume, "
+          f"or a lang code ({langs})")
 
     while not stop_event.is_set():
         try:
@@ -20,6 +21,8 @@ async def wait_for_keypress(stop_event, translation_queue, cfg, transcriber):
                 break
             elif user_input == 'nt':
                 translation_queue.put("New Talk")
+            elif user_input == 'p':
+                transcriber.toggle_pause()
             elif user_input in cfg.LANGUAGE_MAP:
                 print(f"Switching transcription to: {cfg.LANGUAGE_MAP[user_input].display_name}")
                 cfg.curr_lang = user_input # Update the shared config
