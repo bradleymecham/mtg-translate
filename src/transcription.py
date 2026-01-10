@@ -98,10 +98,16 @@ class TranscriptionEngine:
                       f"{curr_lang.display_name} "
                       f"({curr_lang.speech_code}) ---")
  
+            speech_context = speech.SpeechContext(
+                phrases=self.config.church_keywords,
+                boost=10.0
+            )
+
             config = speech.RecognitionConfig(
                 encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
                 sample_rate_hertz=16000,
-                language_code=curr_lang_code
+                language_code=curr_lang_code,
+                speech_contexts=[speech_context]
             )
 
             streaming_config = speech.StreamingRecognitionConfig(

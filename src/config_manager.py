@@ -38,6 +38,24 @@ class ConfigManager:
         # Default transcription to English for now; can put in config file next
         self.curr_lang = 'en'
         
+        self.base_keywords = [
+            "Ward", "Aaronic Priesthood", "In the name of Jesus Christ",
+            "Bishopric", "Relief Society", "Elders", "Deacons",
+            "Quorum", "Testimony", "Atonement", "Gospel",
+            "Melchizedek Priesthood"
+        ]
+
+        # Read custom words from config.ini
+        try:
+            custom_raw = self.config['SPEECH']['custom_keywords']
+            custom_list = [
+                word.strip() for word in custom_raw.split(',') if word.strip()]
+        except (KeyError, ValueError):
+            custom_list = []
+
+        # Merge both lists for the final set of hints
+        self.church_keywords = self.base_keywords + custom_list
+
         # TODO: If config file is not present, throw an error
         file_read = self.config.read(config_file)
         
