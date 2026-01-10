@@ -90,7 +90,8 @@ class TranscriptionEngine:
     # Function for transcribing the audio
     def transcribe_loop(self, loop):
         while not self.stop_event.is_set():
-            curr_lang = self.config.LANGUAGE_MAP[self.config.curr_lang]
+            curr_lang_key = self.config.curr_lang
+            curr_lang = self.config.LANGUAGE_MAP[curr_lang_key]
             curr_lang_code = curr_lang.speech_code
 
             if not self.is_paused:
@@ -98,16 +99,26 @@ class TranscriptionEngine:
                       f"{curr_lang.display_name} "
                       f"({curr_lang.speech_code}) ---")
  
-            speech_context = speech.SpeechContext(
-                phrases=self.config.church_keywords,
-                boost=10.0
-            )
+            speech_contexts = []
 
+            if curr_lang_key == 'en':
+                speech_context = speech.SpeechContext(
+                    phrases=self.config.church_keywords,
+                    boost=10.0
+                )
+
+                speech_contexts = [speech_context]
+
+                if self.config.debug_mode:
+                    loop.call_soon_threadsafe(
+                        print, "DEBUG: Applying English Church Keywords..."
+                    )
+                    
             config = speech.RecognitionConfig(
                 encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
                 sample_rate_hertz=16000,
                 language_code=curr_lang_code,
-                speech_contexts=[speech_context]
+                speech_contexts=speech_contexts
             )
 
             streaming_config = speech.StreamingRecognitionConfig(
