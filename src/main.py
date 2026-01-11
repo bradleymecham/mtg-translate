@@ -50,8 +50,9 @@ async def main():
     cfg = ConfigManager()
     cfg.debug_mode = args.verbose
 
-    net = NetworkServer()
     transcriber = TranscriptionEngine(cfg, translation_queue, stop_event)
+    net = NetworkServer(transcriber)
+
     translator = TranslationEngine(cfg, translation_queue, net, stop_event)
 
     # 3. Start Servers and Tasks

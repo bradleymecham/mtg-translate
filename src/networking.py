@@ -9,8 +9,9 @@ from zeroconf import ServiceInfo
 import socket
 
 class NetworkServer:
-    def __init__(self):
+    def __init__(self, transcriber=None):
         self.clients = set()
+        self.transcriber = transcriber
         self.zeroconf = AsyncZeroconf()
 
         self.ip_addresses = self.get_ip_addresses()
@@ -60,12 +61,28 @@ class NetworkServer:
     async def websocket_handler(self, websocket):
         print(f"Client connected: {websocket.remote_address}")
         self.clients.add(websocket)
+
+        # Start transcriber if this is the first client
+        if len(self.clients) == 1 and self.transcriber:
+            if self.transcriber.is_paused:
+                self.transcriber.toggle_pause()
+
         try:
             async for message in websocket:
                 pass
+        except websockets.exceptions.ConnectionClosedError: 
+            # This catches the specific "browser fell asleep" scenario
+            pass
+        except Exception as e:
+            print(f"Note: Client connection closed unexpectedly or reset ({e})")
         finally:
             print(f"Client disconnected: {websocket.remote_address}")
             self.clients.remove(websocket)
+
+            # Pause transcriber if no one is left
+            if len(self.clients) == 0 and self.transcriber:
+                if not self.transcriber.is_paused:
+                    self.transcriber.toggle_pause()
 
     async def broadcast_message(self, message):
         if self.clients:

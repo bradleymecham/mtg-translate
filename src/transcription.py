@@ -12,7 +12,8 @@ class TranscriptionEngine:
         self.audio_queue = queue.Queue() # Now internal to this class
         self.speech_client = speech.SpeechClient()
         self._restart_signal = "RESTART_STREAM" 
-        self.is_paused = False
+        self.is_paused = True 
+        print("--- Initialized in SLEEP mode. Waiting for clients. ---")
         # This tracks the last time input audio was received
         self.last_audio_received_time = time.time()
         # This tracks the last time we heard from Google re transcription
