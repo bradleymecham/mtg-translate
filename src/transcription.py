@@ -1,5 +1,6 @@
 from google.cloud import speech
 import pyaudio
+import audioop
 import queue
 import time
 import struct
@@ -42,7 +43,9 @@ class TranscriptionEngine:
 
         FORMAT = pyaudio.paInt16
         CHANNELS = self.config.num_channels
-        RATE = 16000
+        HW_RATE = self.config.hw_rate
+        GOOGLE_RATE = 16000
+        DEVICE_INDEX = self.config.input_device_index
         CHUNK = 1024
 
 
@@ -50,32 +53,27 @@ class TranscriptionEngine:
             stream = audio.open(
                 format=FORMAT,
                 channels=CHANNELS,
-                rate=RATE, 
-                input=True, 
+                rate=HW_RATE, 
+                input=True,
+                input_device_index=DEVICE_INDEX,
                 frames_per_buffer=CHUNK)
 
             while not self.stop_event.is_set():
                 try:
                     audio_chunk = stream.read(1024, exception_on_overflow=False)
 
-                    mono_chunk = audio_chunk
 
                     if CHANNELS == 2:
-                        # Unpack the stereo data (2* CHUNK 16-bit shorts)
-                        data = struct.unpack('<' + str(2*CHUNK) + 'h', 
-                                             audio_chunk)
+                       mono_chunk = audioop.tomono(audio_chunk, 2, 1, 0) 
+                    else:
+                        mono_chunk = audio_chunk
 
-                        # Extract right channel (every other sample, start at 1)
-                        right_channel_data = data[1::2]
- 
-                        # Repack the mono data back into a byte string
-                        mono_chunk = (
-                            struct.pack('<' + str(CHUNK) + 'h', 
-                                        *right_channel_data)
-                        )
+                    resampled_chunk, _ = audioop.ratecv(
+                        mono_chunk, 2, 1, HW_RATE, GOOGLE_RATE, None)
+
                     # Send resulting chunk to transcription
                     loop.call_soon_threadsafe(self.audio_queue.put_nowait, 
-                                              mono_chunk)
+                                              resampled_chunk)
                 except IOError as e:
                     print(f"IO Error: {e}")
         except Exception as e:

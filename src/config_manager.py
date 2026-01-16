@@ -80,7 +80,18 @@ class ConfigManager:
             print("Number of audio channels unspecified.  Defaulting to 1")
             self.num_channels = 1
         
-                
+        try:
+            self.hw_rate = int(self.config['AUDIO']['hw_rate'])
+        except (KeyError, ValueError):
+            print("Hardware sample rate unspecified.  Defaulting to 16000")
+            self.hw_rate = 16000
+        
+        try:
+            self.input_device_index = int(self.config['AUDIO']['device_index'])
+        except (KeyError, ValueError):
+            print("Input device index unspecified.  Defaulting to 0")
+            self.input_device_index = 0
+
         # Read in language codes -- default to English if none are specified
         try:
             raw_codes = (
