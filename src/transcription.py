@@ -1,6 +1,6 @@
 from google.cloud import speech
 import pyaudio
-import audioop
+import numpy as np
 import queue
 import time
 import struct
@@ -62,18 +62,26 @@ class TranscriptionEngine:
                 try:
                     audio_chunk = stream.read(1024, exception_on_overflow=False)
 
+                    samples = np.frombuffer(audio_chunk, dtype=np.int16)
 
                     if CHANNELS == 2:
-                       mono_chunk = audioop.tomono(audio_chunk, 2, 1, 0) 
+                        # [0::2] is the Left channel, [1::2] is the Right
+                        channel_data = samples[0::2]
                     else:
-                        mono_chunk = audio_chunk
+                        channel_data = samples
 
-                    resampled_chunk, _ = audioop.ratecv(
-                        mono_chunk, 2, 1, HW_RATE, GOOGLE_RATE, None)
+                    # Resample using Linear Interpolation (HW_RATE -> 16000)
+                    num_samples = int(len(channel_data) * GOOGLE_RATE / HW_RATE)
+                    resampled = np.interp(
+                        np.linspace(0, len(channel_data), num_samples,
+                            endpoint=False),
+                        np.arange(len(channel_data)),
+                        channel_data
+                    ).astype(np.int16)
 
-                    # Send resulting chunk to transcription
+                    # Send resulting 16k mono bytes to transcription
                     loop.call_soon_threadsafe(self.audio_queue.put_nowait, 
-                                              resampled_chunk)
+                                              resampled.tobytes())
                 except IOError as e:
                     print(f"IO Error: {e}")
         except Exception as e:
