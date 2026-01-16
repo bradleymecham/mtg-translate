@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real-Time Multilingual Translator</title>
+    <style>
+        body {font-family:Arial,sans-serif; text-align: center; padding: 20px; }
+
+        .control-bar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap; 15px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            margin-left: auto;
+            margin-right: auto;
+            max-width: 95%;
+            box-sizing: border-box;
+            flex-wrap: wrap;
+        }
+
+        .control-bar label {
+            margin-left: 40px;
+            margin-right: 5px;
+        }
+
+        #language-select {
+            font-size: 1.1em;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+
+        #translation-output {
+            display: flex;
+            flex-direction: column;
+            font-size: 2.2em; /* Large text for easy viewing */
+            font-weight: bold;
+            color: #000;
+            min-height: 200px;
+            max-height: 70vh; /* 60% of viewport height */
+            padding: 20px;
+            border: 2px solid #0056b3;
+            text-align: left;
+            overflow-y: auto;
+            margin: 0 auto;
+            max-width: 95%;
+            box-sizing: border-box;
+            white-space: pre-wrap;
+        }
+
+        .translation-entry {
+            color: #000;
+            margin-bottom: 20px;
+            line-height: 1.2;
+        }
+
+        .info { font-size: 0.9em; color: #666; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+    <h1>Real-Time Meeting Translator</h1>
+
+    <div class="control-bar">
+        <input type="text" id="ipAddress" placeholder="Server IP" style="width: 180px; padding: 10px;">
+        <button onclick="connectWebSocket()" style="padding: 10px 20px; font-weight: bold;">Connect</button>
+
+        <label for="language-select" style="font-weight: bold; font-size: 1.1em;">Language:</label>
+        <select id="language-select">
+            <option value="cn">Chinese</option>
+            <option value="en" selected>English</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+            <option value="ja">Japanese</option>
+            <option value="sw">Kiswahili</option>
+        </select>
+    </div>
+
+    <div id="translation-output">Connecting...</div>
+
+    <div class="info">
+        <p>Status: <span id="status">Initializing</span></p>
+    </div>
+
+    <script>
+        const outputDiv = document.getElementById('translation-output');
+        const statusSpan = document.getElementById('status');
+        const languageSelect = document.getElementById('language-select');
+        const ipAddressInput = document.getElementById('ipAddress');
+        const defaultPort = "8765";
+        let socket = null;
+        let selectedLanguage = languageSelect.value; 
+
+        // Auto-detect server IP from the page we loaded from
+        function getServerIP() {
+            // If we loaded this page from http://192.168.1.100:8080,
+            // the WebSocket shoul connect to 192.168.1.100:8765
+            return window.location.hostname;
+        }
+
+        // Auto-fill the IP address field
+        window.addEventListener('load', () => {
+            const detectedIP = getServerIP();
+            ipAddressInput.value = detectedIP;
+            ipAddressInput.placeholder = detectedIP || "Server IP";
+            // Auto-connect on page load
+            connectWebSocket();
+        });
+
+        // Update selected language when the dropdown changes
+        languageSelect.addEventListener('change', (event) => {
+            selectedLanguage = event.target.value;
+            outputDiv.innerHTML = "Language set to " + event.target.options[event.target.selectedIndex].text + ". Waiting for next translation...";
+        });
+
+        function connectWebSocket() {
+            if (socket) {
+                socket.close();
+            }
+
+            const ipAddress = ipAddressInput.value.trim() || getServerIP(); 
+            if (!ipAddress) {
+                alert("Unable to detect server IP. Please enter manually.");
+                return;
+            }
+            
+            const wsUrl = `ws://${ipAddress}:${defaultPort}`;
+            statusSpan.textContent = `Connecting to ${ipAddress}...`;
+            outputDiv.innerHTML = "Attempting to connect...";
+            
+            try {
+                socket = new WebSocket(wsUrl);
+            } catch (error) {
+                statusSpan.textContent = `Error connecting: ${error.message}`;
+                return;
+            }
+            
+            socket.onopen = function() {
+                statusSpan.textContent = "Connected";
+                outputDiv.innerHTML = "Connected. Select your language to begin receiving translations.";
+            };
+
+            socket.onmessage = function(event) {
+                try {
+                    // First level JSON: {"text": "JSON_STRING"}
+                    const data = JSON.parse(event.data).text;
+                    
+                    // Check for the 'New Talk' signal (which will be a string)
+                    if (data === "New Talk") {
+                        // Using a dashed line to separate topics
+                        outputDiv.insertAdjacentHTML('beforeend', '<hr style="width:100%; border:1px dashed #ccc; margin: 20px 0;">');
+                        return;
+                    }
+
+                    // Second level JSON string: {"language_code": "es", "text": "..."}
+                    const payload = JSON.parse(data);
+                    
+                    // Filter the payload based on the user's selected language
+                    if (payload.language_code === selectedLanguage) {
+                        // Check for initial/default messages to replace them
+                        const isInitialMessage = (
+                            outputDiv.innerHTML.includes("Connected. Select your language") || (
+                                outputDiv.innerHTML.includes("Language set to") && 
+                                outputDiv.innerHTML.includes("Waiting for next translation")) ||
+                            outputDiv.innerHTML.includes("Attempting to connect...")
+                        );
+
+                        if (isInitialMessage) {
+                            outputDiv.innerHTML = ""; // Clear status messages before inserting real text
+                        } 
+
+                        // Create the entry.
+                        const html = `<div class="translation-entry">${payload.text}</div>`;
+ 
+                        // Add the new text
+                        outputDiv.insertAdjacentHTML('beforeend', html);
+                    } 
+
+                } catch (e) {
+                    console.error("Error processing message:", e, event.data);
+                }
+            };
+
+            socket.onclose = function() {
+                statusSpan.textContent = "Disconnected";
+                outputDiv.innerHTML = "Connection lost. Please try connecting again.";
+            };
+
+            socket.onerror = function(error) {
+                statusSpan.textContent = "Error";
+                outputDiv.innerHTML = "Error connecting to server. Please check IP address and try again.";
+            };
+        }
+    </script>
+</body>
+</html>
