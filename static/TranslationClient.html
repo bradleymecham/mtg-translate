@@ -109,20 +109,58 @@
             50% { opacity: 0.5; }
         }
 
-        .translation-box {
+        .translation-box-wrapper {
+            position: relative;
             background: white;
-            padding: 30px;
             border-radius: 15px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            min-height: 200px;
         }
 
-        .translation-text {
-            font-size: 2em;
+        .translation-box {
+            padding: 30px;
+            max-height: 500px;
+            overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+
+        .translation-box::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .translation-box::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        .translation-box::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 10px;
+        }
+
+        .translation-box::-webkit-scrollbar-thumb:hover {
+            background: #5568d3;
+        }
+
+        .translation-entry {
+            font-size: 1.5em;
             line-height: 1.6;
             color: #333;
-            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #f0f0f0;
             word-wrap: break-word;
+        }
+
+        .translation-entry:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .timestamp {
+            font-size: 0.6em;
+            color: #999;
+            margin-bottom: 5px;
         }
 
         .empty-state {
@@ -130,16 +168,18 @@
             font-style: italic;
             text-align: center;
             padding: 40px 0;
+            font-size: 1.2em;
         }
 
         .new-talk-marker {
             background: #764ba2;
             color: white;
-            padding: 10px 20px;
+            padding: 15px 20px;
             border-radius: 8px;
             text-align: center;
             margin: 20px 0;
             font-weight: 600;
+            font-size: 1.2em;
         }
 
         .audio-controls {
@@ -169,6 +209,61 @@
             border-radius: 50%;
             background: #667eea;
             cursor: pointer;
+        }
+
+        .scroll-to-bottom {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            z-index: 10;
+        }
+
+        .scroll-to-bottom:hover {
+            background: #5568d3;
+            transform: scale(1.1);
+        }
+
+        .scroll-to-bottom.visible {
+            display: flex;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .control-buttons button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .clear-button {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .clear-button:hover {
+            background: #ee5a52;
         }
     </style>
 </head>
@@ -206,16 +301,21 @@
                 </div>
             </div>
 
+            <div class="control-buttons">
+                <button class="clear-button" id="clearButton">🗑️ Clear History</button>
+            </div>
+
             <div class="status">
                 <div class="status-indicator" id="statusIndicator"></div>
                 <span id="statusText">Connecting...</span>
             </div>
         </div>
 
-        <div class="translation-box">
-            <div class="translation-text" id="translationText">
+        <div class="translation-box-wrapper">
+            <div class="translation-box" id="translationBox">
                 <div class="empty-state">Waiting for translation...</div>
             </div>
+            <button class="scroll-to-bottom" id="scrollToBottom" title="Jump to latest">↓</button>
         </div>
     </div>
 
@@ -226,15 +326,19 @@
         let volume = 0.8;
         const audioQueue = [];
         let isPlayingAudio = false;
+        let autoScroll = true;
+        let isFirstMessage = true;
 
         // Get DOM elements
         const languageSelect = document.getElementById('languageSelect');
-        const translationText = document.getElementById('translationText');
+        const translationBox = document.getElementById('translationBox');
         const statusIndicator = document.getElementById('statusIndicator');
         const statusText = document.getElementById('statusText');
         const audioEnabledCheckbox = document.getElementById('audioEnabled');
         const volumeControl = document.getElementById('volumeControl');
         const volumeDisplay = document.getElementById('volumeDisplay');
+        const scrollToBottomBtn = document.getElementById('scrollToBottom');
+        const clearButton = document.getElementById('clearButton');
 
         // Language selection
         languageSelect.addEventListener('change', (e) => {
@@ -253,6 +357,74 @@
             volume = e.target.value / 100;
             volumeDisplay.textContent = e.target.value + '%';
         });
+
+        // Clear history button
+        clearButton.addEventListener('click', () => {
+            translationBox.innerHTML = '<div class="empty-state">Waiting for translation...</div>';
+            isFirstMessage = true;
+            scrollToBottomBtn.classList.remove('visible');
+        });
+
+        // Scroll to bottom button
+        scrollToBottomBtn.addEventListener('click', () => {
+            autoScroll = true;
+            scrollToBottom();
+            scrollToBottomBtn.classList.remove('visible');
+        });
+
+        // Detect user scrolling
+        translationBox.addEventListener('scroll', () => {
+            const isAtBottom = translationBox.scrollHeight - translationBox.scrollTop <= translationBox.clientHeight + 50;
+            
+            if (isAtBottom) {
+                autoScroll = true;
+                scrollToBottomBtn.classList.remove('visible');
+            } else {
+                autoScroll = false;
+                scrollToBottomBtn.classList.add('visible');
+            }
+        });
+
+        // Scroll to bottom function
+        function scrollToBottom() {
+            translationBox.scrollTop = translationBox.scrollHeight;
+        }
+
+        // Add new translation to the box
+        function addTranslation(text, isNewTalk = false) {
+            // Remove empty state if this is the first message
+            if (isFirstMessage) {
+                translationBox.innerHTML = '';
+                isFirstMessage = false;
+            }
+
+            const entry = document.createElement('div');
+            
+            if (isNewTalk) {
+                entry.className = 'new-talk-marker';
+                entry.innerHTML = '📢 New Talk';
+            } else {
+                entry.className = 'translation-entry';
+                
+                const timestamp = document.createElement('div');
+                timestamp.className = 'timestamp';
+                const now = new Date();
+                timestamp.textContent = now.toLocaleTimeString();
+                
+                const textContent = document.createElement('div');
+                textContent.textContent = text;
+                
+                entry.appendChild(timestamp);
+                entry.appendChild(textContent);
+            }
+            
+            translationBox.appendChild(entry);
+            
+            // Auto-scroll if enabled
+            if (autoScroll) {
+                setTimeout(scrollToBottom, 10);
+            }
+        }
 
         // Play audio from base64 data
         async function playAudio(base64Audio) {
@@ -336,7 +508,7 @@
                     if (data.type === 'text') {
                         // Text translation message
                         if (data.language_code === selectedLanguage) {
-                            translationText.innerHTML = `<div>${data.text}</div>`;
+                            addTranslation(data.text);
                         }
                     } else if (data.type === 'audio') {
                         // Audio message
@@ -349,9 +521,9 @@
                         const payload = JSON.parse(data.text);
                         
                         if (payload.text === "New Talk") {
-                            translationText.innerHTML = '<div class="new-talk-marker">📢 New Talk</div>';
+                            addTranslation('', true);
                         } else if (payload.language_code === selectedLanguage) {
-                            translationText.innerHTML = `<div>${payload.text}</div>`;
+                            addTranslation(payload.text);
                         }
                     }
                 } catch (error) {
