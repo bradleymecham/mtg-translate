@@ -39,10 +39,21 @@ class ConfigManager:
         self.curr_lang = 'en'
         
         self.base_keywords = [
-            "Ward", "Aaronic Priesthood", "In the name of Jesus Christ",
-            "Bishopric", "Relief Society", "Elders", "Deacons",
-            "Quorum", "Testimony", "Atonement", "Gospel",
-            "Melchizedek Priesthood"
+            "ward", "Aaronic priesthood", "In the name of Jesus Christ",
+            "bishopric", "Relief Society", "elders", "deacons",
+            "quorum", "testimony", "atonement", "ministering brother",
+            "ministering sister", "ministering interview", 
+            "Melchizedek priesthood",
+            "Dallin H. Oaks", "Henry B. Eyring", "D. Todd Christofferson",
+            "Deiter F. Uchtdorf", "David A. Bednar", "Quentin L. Cook",
+            "Neil L. Andersen", "Ronald A. Rasband", "Gary E. Stevenson",
+            "Dale G. Renlund", "Gerrit W. Gong", "Ulisses Soares",
+            "Patrick Kearon", "Gerald Causse", "Eyring", "Uchtdorf", "Bednar",
+            "Quentin", "Rasband", "Renlund", "Soares", "Kearon", "Causse",
+            "Primary", "Primary songs", "righteous", "area presidency",
+            "first presidency", "Quorum of the Twelve", "ordained",
+            "Doctrine and Covenants", "first estate", "second estate",
+            "Fall of Adam", "exaltation"
         ]
 
         # Read custom words from config.ini
