@@ -155,11 +155,12 @@ class TranscriptionEngine:
                 # Set to 500ms (minimum allowed is 500ms)
                 voice_activity_timeout = cloud_speech.StreamingRecognitionFeatures.VoiceActivityTimeout(
                     speech_end_timeout=duration_pb2.Duration(
-                        seconds=0, nanos=500000000)
+                        seconds=1, nanos=00000000)
                 )
     
                 streaming_features = cloud_speech.StreamingRecognitionFeatures(
                     enable_voice_activity_events=True,
+                    interim_results=True,
                     voice_activity_timeout=voice_activity_timeout
                 )
     
@@ -178,7 +179,8 @@ class TranscriptionEngine:
                     now = time.time()
 
                     if now - start_time >= self.STREAM_LIMIT:
-                        print("Reached Google 5-min limit. Refreshing stream.")
+                        loop.call_soon_threadsafe(print,
+                            "Reached Google 5-min limit. Refreshing stream.")
                         return # Exit generator to trigger a fresh stream
  
                     # If we have been sending audio for > 10s but Google hasn't
@@ -231,7 +233,7 @@ class TranscriptionEngine:
                     if self.stop_event.is_set():
                         break
 
-                    if not response.results:
+                    if not response.results or len(response.results) == 0:
                         continue
 
                     result = response.results[0]
@@ -243,23 +245,29 @@ class TranscriptionEngine:
                         #    f"Interim: {result.alternatives[0].transcript}")
                         pass
                     if result.is_final:
-                        original_text = (
-                            result.alternatives[0].transcript.strip())
- 
+                        if (not result.alternatives or
+                            len(result.alternatives) == 0):
+                            original_text = ""
+                        else:
+                            original_text = (
+                                result.alternatives[0].transcript.strip())
+
+                        if not original_text:
+                            continue
+
                         # Print transcription safely on the main loop
                         if self.config.debug_mode:
-                             print_transcript = (
-                                  lambda text: 
-                                  print(f"Orig.: {text}"))
-                             loop.call_soon_threadsafe(print_transcript,
-                                                       original_text)
+                            loop.call_soon_threadsafe(print,
+                                f"Orig.: {original_text}")
  
                         # Send result to the translation thread queue
                         self.translation_queue.put(original_text)
+
             except Exception as e:
                 err_str = str(e)
                 # Define common strings for "expected" stream closures
                 expected_errors = [
+                    "Stream timed out",
                     "Stream removed",
                     "Deadline Exceeded",
                     "Audio Timeout Error"
