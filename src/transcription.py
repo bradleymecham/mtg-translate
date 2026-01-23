@@ -13,7 +13,8 @@ class TranscriptionEngine:
         self.config = config_manager
         self.translation_queue = translation_queue
         self.stop_event = stop_event
-        self.audio_queue = queue.Queue() # Now internal to this class
+        self.audio_queue = queue.Queue()
+        self.monitor_queue = queue.Queue()
         self.speech_client = SpeechClient()
         self.project_id = "englishtexttojapanese"
         self.recognizer = f"projects/{self.project_id}/locations/global/recognizers/_"
@@ -79,15 +80,6 @@ class TranscriptionEngine:
                     else:
                         channel_data = samples
 
-                    # Resample using Linear Interpolation (HW_RATE -> 16000)
-                    #num_samples = int(len(channel_data) * GOOGLE_RATE / HW_RATE)
-                    #resampled = np.interp(
-                    #    np.linspace(0, len(channel_data), num_samples,
-                    #        endpoint=False),
-                    #    np.arange(len(channel_data)),
-                    #    channel_data
-                    #).astype(np.int16)
-
                     try:
                         num_samples = int(len(channel_data) * GOOGLE_RATE / HW_RATE)
                         resampled = signal.resample(channel_data, num_samples).astype(np.int16)
@@ -101,8 +93,16 @@ class TranscriptionEngine:
                         ).astype(np.int16)
 
                     # Send resulting 16k mono bytes to transcription
+                    resampled_bytes = resampled.tobytes()
+
                     loop.call_soon_threadsafe(self.audio_queue.put_nowait, 
-                                              resampled.tobytes())
+                                              resampled_bytes)
+                    # Add bytes to monitor
+                    try:
+                        self.monitor_queue.put_nowait(resampled_bytes)
+                    except queue.Full:
+                        pass  # Drop frame if montor can't keep up
+
                 except IOError as e:
                     print(f"IO Error: {e}")
         except Exception as e:
@@ -114,6 +114,51 @@ class TranscriptionEngine:
             audio.terminate()
 
         pass
+
+    def monitor_loop(self, loop):
+        """Plays the processed audio to the default output for monitoring."""
+        audio = pyaudio.PyAudio()
+        stream = None
+
+        FORMAT = pyaudio.paInt16
+        CHANNELS = 1  # Mono output
+        RATE = 16000  # Match Google's expected rate (bc purpose is to check)
+        CHUNK = 1024
+
+        try:
+            # Open output stream
+            stream = audio.open(
+                format=FORMAT,
+                channels=CHANNELS,
+                rate=RATE,
+                output=True,
+                output_device_index=self.config.output_device_index,
+                frames_per_buffer=CHUNK
+            )
+
+            print("--- Audio monitor started (output to default device) ---")
+
+            while not self.stop_event.is_set():
+                try:
+                    # Get audio from monitor queue
+                    audio_chunk = self.monitor_queue.get(timeout=1)
+
+                    # Play it
+                    stream.write(audio_chunk)
+
+                except queue.Empty:
+                    continue
+                except exception as e:
+                    print(f"Monitor error: {e}")
+        except Exception as e:
+            print(f"Monitor initialization error: {e}")
+        finally:
+            if stream:
+                stream.stop_stream()
+                stream.close()
+            audio.terminate()
+            print("--- Audio monitor stopped ---")
+
 
     # Function for transcribing the audio
     def transcribe_loop(self, loop):

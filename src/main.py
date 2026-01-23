@@ -61,6 +61,7 @@ async def main():
     
     tasks = [
         loop.run_in_executor(executor, transcriber.audio_stream, loop),
+        loop.run_in_executor(executor, transcriber.monitor_loop, loop),
         loop.run_in_executor(executor, transcriber.transcribe_loop, loop),
         loop.run_in_executor(executor, translator.translate_loop, loop),
         wait_for_keypress(stop_event, translation_queue, cfg, transcriber)
@@ -74,8 +75,9 @@ async def main():
     finally:
         #TODO; cancel tasks (audio_stream, transcribe_loop, translate_loop)
         tasks[0].cancel() # audio_stream
-        tasks[1].cancel() # transcribe_loop
-        tasks[2].cancel() # translate_loop
+        tasks[1].cancel() # monitor_loop
+        tasks[2].cancel() # transcribe_loop
+        tasks[3].cancel() # translate_loop
 
         executor.shutdown(wait=True)
 

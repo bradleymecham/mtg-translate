@@ -98,10 +98,18 @@ class ConfigManager:
             self.hw_rate = 16000
         
         try:
-            self.input_device_index = int(self.config['AUDIO']['device_index'])
+            self.input_device_index = int(
+                self.config['AUDIO']['input_device_index'])
         except (KeyError, ValueError):
-            print("Input device index unspecified.  Defaulting to 0")
-            self.input_device_index = 0
+            print("Input device index unspecified. Using system default")
+            self.input_device_index = None
+
+        try:
+            self.output_device_index = int(
+                self.config['AUDIO']['output_device_index'])
+        except (KeyError, ValueError):
+            print("Output device index unspecified. Using system default")
+            self.output_device_index = None
 
         # Read in language codes -- default to English if none are specified
         try:
