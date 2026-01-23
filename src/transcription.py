@@ -3,6 +3,7 @@ from google.cloud.speech_v2.types import cloud_speech
 from google.protobuf import duration_pb2
 import pyaudio
 import numpy as np
+from scipy import signal
 import queue
 import time
 import struct
@@ -79,13 +80,25 @@ class TranscriptionEngine:
                         channel_data = samples
 
                     # Resample using Linear Interpolation (HW_RATE -> 16000)
-                    num_samples = int(len(channel_data) * GOOGLE_RATE / HW_RATE)
-                    resampled = np.interp(
-                        np.linspace(0, len(channel_data), num_samples,
-                            endpoint=False),
-                        np.arange(len(channel_data)),
-                        channel_data
-                    ).astype(np.int16)
+                    #num_samples = int(len(channel_data) * GOOGLE_RATE / HW_RATE)
+                    #resampled = np.interp(
+                    #    np.linspace(0, len(channel_data), num_samples,
+                    #        endpoint=False),
+                    #    np.arange(len(channel_data)),
+                    #    channel_data
+                    #).astype(np.int16)
+
+                    try:
+                        num_samples = int(len(channel_data) * GOOGLE_RATE / HW_RATE)
+                        resampled = signal.resample(channel_data, num_samples).astype(np.int16)
+                    except ImportError:
+                        # Fallback to linear interpolation
+                        num_samples = int(len(channel_data) * GOOGLE_RATE / HW_RATE)
+                        resampled = np.interp(
+                            np.linspace(0, len(channel_data), num_samples, endpoint=False),
+                            np.arange(len(channel_data)),
+                            channel_data
+                        ).astype(np.int16)
 
                     # Send resulting 16k mono bytes to transcription
                     loop.call_soon_threadsafe(self.audio_queue.put_nowait, 
