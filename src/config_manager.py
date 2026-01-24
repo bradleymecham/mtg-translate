@@ -21,7 +21,7 @@ class ConfigManager:
         self.config = configparser.ConfigParser()
 
         # Language Map stays for reference
-        self.LANGUAGE_MAP = {
+        self.LANGUAGE_MAP = { #transcription to translation
             "cn": LanguageInfo("Chinese (PRC)","cmn-Hans-CN","zh-Hans"),
             "en": LanguageInfo("English","en-US","en"),
             "fr": LanguageInfo("French","fr","fr"),
@@ -39,10 +39,21 @@ class ConfigManager:
         self.curr_lang = 'en'
         
         self.base_keywords = [
-            "Ward", "Aaronic Priesthood", "In the name of Jesus Christ",
-            "Bishopric", "Relief Society", "Elders", "Deacons",
-            "Quorum", "Testimony", "Atonement", "Gospel",
-            "Melchizedek Priesthood"
+            "ward", "Aaronic priesthood", "In the name of Jesus Christ",
+            "bishopric", "Relief Society", "elders", "deacons",
+            "quorum", "testimony", "atonement", "ministering brother",
+            "ministering sister", "ministering interview", 
+            "Melchizedek priesthood",
+            "Dallin H. Oaks", "Henry B. Eyring", "D. Todd Christofferson",
+            "Deiter F. Uchtdorf", "David A. Bednar", "Quentin L. Cook",
+            "Neil L. Andersen", "Ronald A. Rasband", "Gary E. Stevenson",
+            "Dale G. Renlund", "Gerrit W. Gong", "Ulisses Soares",
+            "Patrick Kearon", "Gerald Causse", "Eyring", "Uchtdorf", "Bednar",
+            "Quentin", "Rasband", "Renlund", "Soares", "Kearon", "Causse",
+            "Primary", "Primary songs", "righteous", "area presidency",
+            "first presidency", "Quorum of the Twelve", "ordained",
+            "Doctrine and Covenants", "first estate", "second estate",
+            "Fall of Adam", "exaltation"
         ]
 
         # Read custom words from config.ini
@@ -80,7 +91,26 @@ class ConfigManager:
             print("Number of audio channels unspecified.  Defaulting to 1")
             self.num_channels = 1
         
-                
+        try:
+            self.hw_rate = int(self.config['AUDIO']['hw_rate'])
+        except (KeyError, ValueError):
+            print("Hardware sample rate unspecified.  Defaulting to 16000")
+            self.hw_rate = 16000
+        
+        try:
+            self.input_device_index = int(
+                self.config['AUDIO']['input_device_index'])
+        except (KeyError, ValueError):
+            print("Input device index unspecified. Using system default")
+            self.input_device_index = None
+
+        try:
+            self.output_device_index = int(
+                self.config['AUDIO']['output_device_index'])
+        except (KeyError, ValueError):
+            print("Output device index unspecified. Using system default")
+            self.output_device_index = None
+
         # Read in language codes -- default to English if none are specified
         try:
             raw_codes = (

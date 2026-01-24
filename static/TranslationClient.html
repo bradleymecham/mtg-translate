@@ -1,200 +1,552 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Real-Time Multilingual Translator</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Translation</title>
     <style>
-        body {font-family:Arial,sans-serif; text-align: center; padding: 20px; }
-
-        .control-bar {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap; 15px;
-            margin-bottom: 20px;
-            padding: 15px;
-            background-color: #f9f9f9;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            margin-left: auto;
-            margin-right: auto;
-            max-width: 95%;
+        * {
+            margin: 0;
+            padding: 0;
             box-sizing: border-box;
-            flex-wrap: wrap;
         }
 
-        .control-bar label {
-            margin-left: 40px;
-            margin-right: 5px;
-        }
-
-        #language-select {
-            font-size: 1.1em;
-            padding: 10px;
-            border-radius: 5px;
-            font-weight: bold;
-        }
-
-        #translation-output {
-            display: flex;
-            flex-direction: column;
-            font-size: 2.2em; /* Large text for easy viewing */
-            font-weight: bold;
-            color: #000;
-            min-height: 200px;
-            max-height: 70vh; /* 60% of viewport height */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
             padding: 20px;
-            border: 2px solid #0056b3;
-            text-align: left;
-            overflow-y: auto;
+        }
+
+        .container {
+            max-width: 800px;
             margin: 0 auto;
-            max-width: 95%;
-            box-sizing: border-box;
-            white-space: pre-wrap;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+
+        select:hover {
+            border-color: #667eea;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #e0e0e0;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.connected {
+            background: #4caf50;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .translation-box-wrapper {
+            position: relative;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .translation-box {
+            padding: 30px;
+            max-height: 500px;
+            overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+
+        .translation-box::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .translation-box::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        .translation-box::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 10px;
+        }
+
+        .translation-box::-webkit-scrollbar-thumb:hover {
+            background: #5568d3;
         }
 
         .translation-entry {
-            color: #000;
+            font-size: 1.5em;
+            line-height: 1.6;
+            color: #333;
             margin-bottom: 20px;
-            line-height: 1.2;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #f0f0f0;
+            word-wrap: break-word;
         }
 
-        .info { font-size: 0.9em; color: #666; margin-top: 15px; }
+        .translation-entry:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .timestamp {
+            font-size: 0.6em;
+            color: #999;
+            margin-bottom: 5px;
+        }
+
+        .empty-state {
+            color: #999;
+            font-style: italic;
+            text-align: center;
+            padding: 40px 0;
+            font-size: 1.2em;
+        }
+
+        .new-talk-marker {
+            background: #764ba2;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin: 20px 0;
+            font-weight: 600;
+            font-size: 1.2em;
+        }
+
+        .audio-controls {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .volume-control input[type="range"] {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: #ddd;
+            outline: none;
+        }
+
+        .volume-control input[type="range"]::-webkit-slider-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+        }
+
+        .scroll-to-bottom {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            z-index: 10;
+        }
+
+        .scroll-to-bottom:hover {
+            background: #5568d3;
+            transform: scale(1.1);
+        }
+
+        .scroll-to-bottom.visible {
+            display: flex;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .control-buttons button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .clear-button {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .clear-button:hover {
+            background: #ee5a52;
+        }
     </style>
 </head>
 <body>
+    <div class="container">
+        <h1>🌍 Live Translation</h1>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="languageSelect">Select Translation Language:</label>
+                <select id="languageSelect">
+                    <option value="en">English</option>
+                    <option value="es">Spanish (US)</option>
+                    <option value="es2">Spanish (Mexico)</option>
+                    <option value="fr">French</option>
+                    <option value="ja">Japanese</option>
+                    <option value="ru">Russian</option>
+                    <option value="pt">Portuguese (Brazil)</option>
+                    <option value="cn">Chinese (PRC)</option>
+                    <option value="sw">Swahili</option>
+                    <option value="sw2">Swahili (Kenya)</option>
+                </select>
+            </div>
 
-    <h1>Real-Time Meeting Translator</h1>
+            <div class="audio-controls">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="audioEnabled" checked>
+                    <label for="audioEnabled" style="margin-bottom: 0;">Enable Audio Playback</label>
+                </div>
+                
+                <div class="volume-control" style="margin-top: 10px;">
+                    <label for="volumeControl" style="margin-bottom: 0; min-width: 60px;">Volume:</label>
+                    <input type="range" id="volumeControl" min="0" max="100" value="80">
+                    <span id="volumeDisplay">80%</span>
+                </div>
+            </div>
 
-    <div class="control-bar">
-        <input type="text" id="ipAddress" placeholder="Server IP" style="width: 180px; padding: 10px;">
-        <button onclick="connectWebSocket()" style="padding: 10px 20px; font-weight: bold;">Connect</button>
+            <div class="control-buttons">
+                <button class="clear-button" id="clearButton">🗑️ Clear History</button>
+            </div>
 
-        <label for="language-select" style="font-weight: bold; font-size: 1.1em;">Language:</label>
-        <select id="language-select">
-            <option value="cn">Chinese</option>
-            <option value="en" selected>English</option>
-            <option value="es">Español</option>
-            <option value="fr">Français</option>
-            <option value="ja">Japanese</option>
-            <option value="sw">Kiswahili</option>
-        </select>
-    </div>
+            <div class="status">
+                <div class="status-indicator" id="statusIndicator"></div>
+                <span id="statusText">Connecting...</span>
+            </div>
+        </div>
 
-    <div id="translation-output">Connecting...</div>
-
-    <div class="info">
-        <p>Status: <span id="status">Initializing</span></p>
+        <div class="translation-box-wrapper">
+            <div class="translation-box" id="translationBox">
+                <div class="empty-state">Waiting for translation...</div>
+            </div>
+            <button class="scroll-to-bottom" id="scrollToBottom" title="Jump to latest">↓</button>
+        </div>
     </div>
 
     <script>
-        const outputDiv = document.getElementById('translation-output');
-        const statusSpan = document.getElementById('status');
-        const languageSelect = document.getElementById('language-select');
-        const ipAddressInput = document.getElementById('ipAddress');
-        const defaultPort = "8765";
-        let socket = null;
-        let selectedLanguage = languageSelect.value; 
+        let ws;
+        let selectedLanguage = 'en';
+        let audioEnabled = true;
+        let volume = 0.8;
+        const audioQueue = [];
+        let isPlayingAudio = false;
+        let autoScroll = true;
+        let isFirstMessage = true;
 
-        // Auto-detect server IP from the page we loaded from
-        function getServerIP() {
-            // If we loaded this page from http://192.168.1.100:8080,
-            // the WebSocket shoul connect to 192.168.1.100:8765
-            return window.location.hostname;
+        // Get DOM elements
+        const languageSelect = document.getElementById('languageSelect');
+        const translationBox = document.getElementById('translationBox');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const audioEnabledCheckbox = document.getElementById('audioEnabled');
+        const volumeControl = document.getElementById('volumeControl');
+        const volumeDisplay = document.getElementById('volumeDisplay');
+        const scrollToBottomBtn = document.getElementById('scrollToBottom');
+        const clearButton = document.getElementById('clearButton');
+
+        // Language selection
+        languageSelect.addEventListener('change', (e) => {
+            selectedLanguage = e.target.value;
+            console.log('Language changed to:', selectedLanguage);
+        });
+
+        // Audio enabled checkbox
+        audioEnabledCheckbox.addEventListener('change', (e) => {
+            audioEnabled = e.target.checked;
+            console.log('Audio playback:', audioEnabled ? 'enabled' : 'disabled');
+        });
+
+        // Volume control
+        volumeControl.addEventListener('input', (e) => {
+            volume = e.target.value / 100;
+            volumeDisplay.textContent = e.target.value + '%';
+        });
+
+        // Clear history button
+        clearButton.addEventListener('click', () => {
+            translationBox.innerHTML = '<div class="empty-state">Waiting for translation...</div>';
+            isFirstMessage = true;
+            scrollToBottomBtn.classList.remove('visible');
+        });
+
+        // Scroll to bottom button
+        scrollToBottomBtn.addEventListener('click', () => {
+            autoScroll = true;
+            scrollToBottom();
+            scrollToBottomBtn.classList.remove('visible');
+        });
+
+        // Detect user scrolling
+        translationBox.addEventListener('scroll', () => {
+            const isAtBottom = translationBox.scrollHeight - translationBox.scrollTop <= translationBox.clientHeight + 50;
+            
+            if (isAtBottom) {
+                autoScroll = true;
+                scrollToBottomBtn.classList.remove('visible');
+            } else {
+                autoScroll = false;
+                scrollToBottomBtn.classList.add('visible');
+            }
+        });
+
+        // Scroll to bottom function
+        function scrollToBottom() {
+            translationBox.scrollTop = translationBox.scrollHeight;
         }
 
-        // Auto-fill the IP address field
-        window.addEventListener('load', () => {
-            const detectedIP = getServerIP();
-            ipAddressInput.value = detectedIP;
-            ipAddressInput.placeholder = detectedIP || "Server IP";
-            // Auto-connect on page load
-            connectWebSocket();
-        });
-
-        // Update selected language when the dropdown changes
-        languageSelect.addEventListener('change', (event) => {
-            selectedLanguage = event.target.value;
-            outputDiv.innerHTML = "Language set to " + event.target.options[event.target.selectedIndex].text + ". Waiting for next translation...";
-        });
-
-        function connectWebSocket() {
-            if (socket) {
-                socket.close();
+        // Add new translation to the box
+        function addTranslation(text, isNewTalk = false) {
+            // Remove empty state if this is the first message
+            if (isFirstMessage) {
+                translationBox.innerHTML = '';
+                isFirstMessage = false;
             }
 
-            const ipAddress = ipAddressInput.value.trim() || getServerIP(); 
-            if (!ipAddress) {
-                alert("Unable to detect server IP. Please enter manually.");
+            const entry = document.createElement('div');
+            
+            if (isNewTalk) {
+                entry.className = 'new-talk-marker';
+                entry.innerHTML = '📢 New Talk';
+            } else {
+                entry.className = 'translation-entry';
+                
+                const timestamp = document.createElement('div');
+                timestamp.className = 'timestamp';
+                const now = new Date();
+                timestamp.textContent = now.toLocaleTimeString();
+                
+                const textContent = document.createElement('div');
+                textContent.textContent = text;
+                
+                entry.appendChild(timestamp);
+                entry.appendChild(textContent);
+            }
+            
+            translationBox.appendChild(entry);
+            
+            // Auto-scroll if enabled
+            if (autoScroll) {
+                setTimeout(scrollToBottom, 10);
+            }
+        }
+
+        // Play audio from base64 data
+        async function playAudio(base64Audio) {
+            if (!audioEnabled) {
+                console.log('Audio playback disabled');
                 return;
             }
-            
-            const wsUrl = `ws://${ipAddress}:${defaultPort}`;
-            statusSpan.textContent = `Connecting to ${ipAddress}...`;
-            outputDiv.innerHTML = "Attempting to connect...";
-            
+
             try {
-                socket = new WebSocket(wsUrl);
+                // Convert base64 to blob
+                const binaryString = atob(base64Audio);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                const blob = new Blob([bytes], { type: 'audio/mp3' });
+                const url = URL.createObjectURL(blob);
+
+                // Create and play audio
+                const audio = new Audio(url);
+                audio.volume = volume;
+
+                return new Promise((resolve, reject) => {
+                    audio.onended = () => {
+                        URL.revokeObjectURL(url);
+                        resolve();
+                    };
+                    audio.onerror = (e) => {
+                        console.error('Audio playback error:', e);
+                        URL.revokeObjectURL(url);
+                        reject(e);
+                    };
+                    audio.play().catch(reject);
+                });
             } catch (error) {
-                statusSpan.textContent = `Error connecting: ${error.message}`;
+                console.error('Error playing audio:', error);
+            }
+        }
+
+        // Process audio queue
+        async function processAudioQueue() {
+            if (isPlayingAudio || audioQueue.length === 0) {
                 return;
             }
+
+            isPlayingAudio = true;
+            const audioData = audioQueue.shift();
+
+            try {
+                await playAudio(audioData);
+            } catch (error) {
+                console.error('Error in audio queue:', error);
+            } finally {
+                isPlayingAudio = false;
+                // Process next audio in queue
+                if (audioQueue.length > 0) {
+                    setTimeout(processAudioQueue, 100);
+                }
+            }
+        }
+
+        // Connect to WebSocket
+        function connect() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.hostname}:8765`;
             
-            socket.onopen = function() {
-                statusSpan.textContent = "Connected";
-                outputDiv.innerHTML = "Connected. Select your language to begin receiving translations.";
+            console.log('Connecting to:', wsUrl);
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                statusIndicator.classList.add('connected');
+                statusText.textContent = 'Connected';
             };
 
-            socket.onmessage = function(event) {
+            ws.onmessage = (event) => {
                 try {
-                    // First level JSON: {"text": "JSON_STRING"}
-                    const data = JSON.parse(event.data).text;
+                    const data = JSON.parse(event.data);
                     
-                    // Check for the 'New Talk' signal (which will be a string)
-                    if (data === "New Talk") {
-                        // Using a dashed line to separate topics
-                        outputDiv.insertAdjacentHTML('beforeend', '<hr style="width:100%; border:1px dashed #ccc; margin: 20px 0;">');
-                        return;
+                    // Handle different message types
+                    if (data.type === 'text') {
+                        // Text translation message
+                        if (data.language_code === selectedLanguage) {
+                            addTranslation(data.text);
+                        }
+                    } else if (data.type === 'audio') {
+                        // Audio message
+                        if (data.language_code === selectedLanguage && data.audio_data) {
+                            audioQueue.push(data.audio_data);
+                            processAudioQueue();
+                        }
+                    } else if (data.text) {
+                        // Legacy format - parse nested JSON
+                        const payload = JSON.parse(data.text);
+                        
+                        if (payload.text === "New Talk") {
+                            addTranslation('', true);
+                        } else if (payload.language_code === selectedLanguage) {
+                            addTranslation(payload.text);
+                        }
                     }
-
-                    // Second level JSON string: {"language_code": "es", "text": "..."}
-                    const payload = JSON.parse(data);
-                    
-                    // Filter the payload based on the user's selected language
-                    if (payload.language_code === selectedLanguage) {
-                        // Check for initial/default messages to replace them
-                        const isInitialMessage = (
-                            outputDiv.innerHTML.includes("Connected. Select your language") || (
-                                outputDiv.innerHTML.includes("Language set to") && 
-                                outputDiv.innerHTML.includes("Waiting for next translation")) ||
-                            outputDiv.innerHTML.includes("Attempting to connect...")
-                        );
-
-                        if (isInitialMessage) {
-                            outputDiv.innerHTML = ""; // Clear status messages before inserting real text
-                        } 
-
-                        // Create the entry.
-                        const html = `<div class="translation-entry">${payload.text}</div>`;
- 
-                        // Add the new text
-                        outputDiv.insertAdjacentHTML('beforeend', html);
-                    } 
-
-                } catch (e) {
-                    console.error("Error processing message:", e, event.data);
+                } catch (error) {
+                    console.error('Error parsing message:', error);
                 }
             };
 
-            socket.onclose = function() {
-                statusSpan.textContent = "Disconnected";
-                outputDiv.innerHTML = "Connection lost. Please try connecting again.";
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                statusIndicator.classList.remove('connected');
+                statusText.textContent = 'Disconnected - Reconnecting...';
+                
+                // Attempt to reconnect after 3 seconds
+                setTimeout(connect, 3000);
             };
 
-            socket.onerror = function(error) {
-                statusSpan.textContent = "Error";
-                outputDiv.innerHTML = "Error connecting to server. Please check IP address and try again.";
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
             };
         }
+
+        // Start connection
+        connect();
     </script>
 </body>
 </html>
