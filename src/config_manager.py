@@ -21,7 +21,7 @@ class ConfigManager:
         self.config = configparser.ConfigParser()
 
         # Language Map stays for reference
-        self.LANGUAGE_MAP = {
+        self.LANGUAGE_MAP = { #transcription to translation
             "cn": LanguageInfo("Chinese (PRC)","cmn-Hans-CN","zh-Hans"),
             "en": LanguageInfo("English","en-US","en"),
             "fr": LanguageInfo("French","fr","fr"),

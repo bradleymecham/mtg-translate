@@ -6,6 +6,7 @@ import argparse
 from config_manager import ConfigManager
 from transcription import TranscriptionEngine
 from translation import TranslationEngine
+from text_to_speech import TextToSpeechEngine
 from networking import NetworkServer
 
 async def wait_for_keypress(stop_event, translation_queue, cfg, transcriber):
@@ -38,6 +39,8 @@ async def main():
     parser = argparse.ArgumentParser(description="Church Translation System")
     parser.add_argument('-v', '--verbose', action='store_true',
                         help="Enable debug mode (print transcripts to console)")
+    parser.add_argument('--no-tts', action='store_true',
+                        help="Disable text-to-speech audio generation")
     args = parser.parse_args()
 
     # 1. Setup shared resources
@@ -50,10 +53,18 @@ async def main():
     cfg = ConfigManager()
     cfg.debug_mode = args.verbose
 
+    net = NetworkServer()
     transcriber = TranscriptionEngine(cfg, translation_queue, stop_event)
-    net = NetworkServer(transcriber)
-
-    translator = TranslationEngine(cfg, translation_queue, net, stop_event)
+    
+    # Initialize TTS engine (can be disabled with --no-tts flag)
+    tts = None
+    if not args.no_tts:
+        tts = TextToSpeechEngine(cfg, net)
+        print("✓ Text-to-Speech enabled")
+    else:
+        print("ℹ Text-to-Speech disabled")
+    
+    translator = TranslationEngine(cfg, translation_queue, net, tts, stop_event)
 
     # 3. Start Servers and Tasks
     await net.register_mDNS()
