@@ -53,6 +53,7 @@ class TranscriptionEngine:
 
         FORMAT = pyaudio.paInt16
         CHANNELS = self.config.num_channels
+        INPUT_CHANNEL = self.config.input_channel
         HW_RATE = self.config.hw_rate
         GOOGLE_RATE = 16000
         DEVICE_INDEX = self.config.input_device_index
@@ -76,7 +77,7 @@ class TranscriptionEngine:
 
                     if CHANNELS == 2:
                         # [0::2] is the Left channel, [1::2] is the Right
-                        channel_data = samples[0::2]
+                        channel_data = samples[INPUT_CHANNEL::2]
                     else:
                         channel_data = samples
 

@@ -135,6 +135,8 @@ class MasterTranslationEngine:
         translated_text = self.synchronous_translate(original_text, 
                                                      orig_code, dest_code)
 
+        translated_text = html.unescape(translated_text)
+
         # Print translation
         if self.config.debug_mode:
             print(f"{lang_name} [{dest_code}]: {translated_text}")

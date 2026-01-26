@@ -1,0 +1,25 @@
+# Google Cloud services
+google-cloud-speech
+google-cloud-translate
+google-cloud-texttospeech
+
+# Audio processing
+pyaudio
+numpy
+scipy
+
+# Async and networking
+asyncio
+aioconsole
+websockets
+aiohttp
+aiofiles
+
+# System utilities
+psutil
+
+# Service discovery
+zeroconf
+
+# Optional: Audio playback for slave client
+pygame

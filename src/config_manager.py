@@ -90,7 +90,14 @@ class ConfigManager:
         except (KeyError, ValueError):
             print("Number of audio channels unspecified.  Defaulting to 1")
             self.num_channels = 1
+
+        try:
+            self.input_channel = int(self.config['AUDIO']['input_channel'])
+        except (KeyError, ValueError):
+            print("Input channel unspecified.  Defaulting to 1")
+            self.input_channel = 1
         
+
         try:
             self.hw_rate = int(self.config['AUDIO']['hw_rate'])
         except (KeyError, ValueError):
