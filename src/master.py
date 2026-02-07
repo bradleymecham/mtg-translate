@@ -4,6 +4,7 @@ import aioconsole
 import concurrent.futures
 import argparse
 import json
+import html
 import socket
 from config_manager import ConfigManager
 from transcription import TranscriptionEngine
@@ -134,6 +135,8 @@ class MasterTranslationEngine:
         # Perform translation
         translated_text = self.synchronous_translate(original_text, 
                                                      orig_code, dest_code)
+
+        translated_text = html.unescape(translated_text)
 
         # Print translation
         if self.config.debug_mode:

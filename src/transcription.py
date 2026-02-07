@@ -59,6 +59,7 @@ class TranscriptionEngine:
 
         FORMAT = pyaudio.paInt16
         CHANNELS = self.config.num_channels
+        INPUT_CHANNEL = self.config.input_channel
         HW_RATE = self.config.hw_rate
         GOOGLE_RATE = 16000
         DEVICE_INDEX = self.config.input_device_index
@@ -82,7 +83,7 @@ class TranscriptionEngine:
 
                     if CHANNELS == 2:
                         # [0::2] is the Left channel, [1::2] is the Right
-                        channel_data = samples[0::2]
+                        channel_data = samples[INPUT_CHANNEL::2]
                     else:
                         channel_data = samples
 
@@ -170,15 +171,6 @@ class TranscriptionEngine:
 
     # Function for transcribing the audio
     def transcribe_loop(self, loop):
-        curr_lang_key = self.config.curr_lang
-        curr_lang = self.config.LANGUAGE_MAP[curr_lang_key]
-        curr_lang_code = curr_lang.speech_code
-
-        if not self.is_paused:
-            print("--- Starting Stream: "
-                  f"{curr_lang.display_name} "
-                  f"({curr_lang.speech_code}) ---")
-
         keywords = self.config.church_keywords
         adaptation = None
         if keywords:
@@ -199,6 +191,15 @@ class TranscriptionEngine:
                 )
 
         while not self.stop_event.is_set():
+            curr_lang_key = self.config.curr_lang
+            curr_lang = self.config.LANGUAGE_MAP[curr_lang_key]
+            curr_lang_code = curr_lang.speech_code
+
+            if not self.is_paused:
+                print("--- Starting Stream: "
+                      f"{curr_lang.display_name} "
+                      f"({curr_lang.speech_code}) ---")
+
             start_time = time.time()
             # Reset for the new stream
             self.last_google_response_time = time.time() 
@@ -218,7 +219,9 @@ class TranscriptionEngine:
                     adaptation=adaptation
                 )
     
-                # Set to 500ms (minimum allowed is 500ms)
+                print(f"Language code: {curr_lang_code}")
+
+                # Set to 1s (minimum allowed is 500ms)
                 voice_activity_timeout = cloud_speech.StreamingRecognitionFeatures.VoiceActivityTimeout(
                     speech_end_timeout=duration_pb2.Duration(
                         seconds=1, nanos=00000000)
