@@ -93,9 +93,10 @@ class ConfigManager:
 
         try:
             self.input_channel = int(self.config['AUDIO']['input_channel'])
+            print(f"Input channel: {self.input_channel}")
         except (KeyError, ValueError):
-            print("Input channel unspecified.  Defaulting to 1")
-            self.input_channel = 1
+            print("Input channel unspecified.  Defaulting to 0")
+            self.input_channel = 0
         
 
         try:
