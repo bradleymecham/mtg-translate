@@ -15,6 +15,7 @@ class TranscriptionEngine:
         self.stop_event = stop_event
         self.audio_queue = queue.Queue()
         self.monitor_queue = queue.Queue()
+        self.monitor_enabled = False
         self.speech_client = SpeechClient()
         self.project_id = "englishtexttojapanese"
         self.recognizer = f"projects/{self.project_id}/locations/global/recognizers/_"
@@ -44,6 +45,11 @@ class TranscriptionEngine:
         self.is_paused = not self.is_paused
         state = "PAUSED" if self.is_paused else "ACTIVE"
         print(f"*** Transcription is now {state} ***")
+
+    def toggle_monitor(self):
+        self.monitor_enabled = not self.monitor_enabled
+        status = "ENABLED" if self.monitor_enabled else "DISABLED"
+        print(f"*** Monitor is now {status} ***")
 
     # Function for processing the audio stream
     def audio_stream(self, loop):
@@ -98,10 +104,11 @@ class TranscriptionEngine:
                     loop.call_soon_threadsafe(self.audio_queue.put_nowait, 
                                               resampled_bytes)
                     # Add bytes to monitor
-                    try:
-                        self.monitor_queue.put_nowait(resampled_bytes)
-                    except queue.Full:
-                        pass  # Drop frame if montor can't keep up
+                    if self.monitor_enabled:
+                        try:
+                            self.monitor_queue.put_nowait(resampled_bytes)
+                        except queue.Full:
+                            pass  # Drop frame if montor can't keep up
 
                 except IOError as e:
                     print(f"IO Error: {e}")
@@ -119,10 +126,11 @@ class TranscriptionEngine:
         """Plays the processed audio to the default output for monitoring."""
         audio = pyaudio.PyAudio()
         stream = None
+        GOOGLE_RATE = 16000
 
         FORMAT = pyaudio.paInt16
         CHANNELS = 1  # Mono output
-        RATE = 16000  # Match Google's expected rate (bc purpose is to check)
+        RATE = GOOGLE_RATE # Match Google's expected rate (purpose is to check)
         CHUNK = 1024
 
         try:
@@ -136,7 +144,7 @@ class TranscriptionEngine:
                 frames_per_buffer=CHUNK
             )
 
-            print("--- Audio monitor started (output to default device) ---")
+            print("--- Audio monitor initialized ---")
 
             while not self.stop_event.is_set():
                 try:
