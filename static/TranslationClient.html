@@ -290,7 +290,7 @@
 
             <div class="audio-controls">
                 <div class="checkbox-group">
-                    <input type="checkbox" id="audioEnabled" checked>
+                    <input type="checkbox" id="audioEnabled">
                     <label for="audioEnabled" style="margin-bottom: 0;">Enable Audio Playback</label>
                 </div>
                 
@@ -322,9 +322,11 @@
     <script>
         let ws;
         let selectedLanguage = 'en';
-        let audioEnabled = true;
+        let audioEnabled = false;
         let volume = 0.8;
         const audioQueue = [];
+        const mainPlayer = new Audio();
+        mainPlayer.autoplay = true;
         let isPlayingAudio = false;
         let autoScroll = true;
         let isFirstMessage = true;
@@ -444,20 +446,20 @@
                 const url = URL.createObjectURL(blob);
 
                 // Create and play audio
-                const audio = new Audio(url);
-                audio.volume = volume;
+                mainPlayer.src = url;
+                mainPlayer.volume = volume;
 
                 return new Promise((resolve, reject) => {
-                    audio.onended = () => {
+                    mainPlayer.onended = () => {
                         URL.revokeObjectURL(url);
                         resolve();
                     };
-                    audio.onerror = (e) => {
+                    mainPlayer.onerror = (e) => {
                         console.error('Audio playback error:', e);
                         URL.revokeObjectURL(url);
                         reject(e);
                     };
-                    audio.play().catch(reject);
+                    mainPlayer.play().catch(reject);
                 });
             } catch (error) {
                 console.error('Error playing audio:', error);
@@ -466,7 +468,7 @@
 
         // Process audio queue
         async function processAudioQueue() {
-            if (isPlayingAudio || audioQueue.length === 0) {
+            if (isPlayingAudio || audioQueue.length === 0 | !audioEnabled) {
                 return;
             }
 
