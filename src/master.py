@@ -183,8 +183,13 @@ class MasterTranslationEngine:
 
 async def wait_for_keypress(stop_event, translation_queue, cfg, transcriber):
     langs = ", ".join(cfg.LANGUAGE_MAP.keys())
-    print("Commands: 'q' to quit, 'nt' for New Talk, 'p':pause/resume, "
-          f"or a lang code ({langs})")
+    print("\nCommands:")
+    print("  'p' - Pause/Resume Transcription")
+    print("  'm' - Enable/Disable Monitor")
+    print("  'nt' - Indicate a New Talk")
+    print("  'q' - Quit applicationto quit")
+    print(f"  or a lang code ({langs})")
+    print("    to specify a new input language")
 
     while not stop_event.is_set():
         try:
@@ -196,6 +201,8 @@ async def wait_for_keypress(stop_event, translation_queue, cfg, transcriber):
                 translation_queue.put("New Talk")
             elif user_input == 'p':
                 transcriber.toggle_pause()
+            elif user_input == 'm':
+                transcriber.toggle_monitor()
             elif user_input in cfg.LANGUAGE_MAP:
                 print(f"Switching transcription to: {cfg.LANGUAGE_MAP[user_input].display_name}")
                 cfg.curr_lang = user_input
@@ -258,6 +265,7 @@ async def main():
     
     tasks = [
         loop.run_in_executor(executor, transcriber.audio_stream, loop),
+        loop.run_in_executor(executor, transcriber.monitor_loop, loop),
         loop.run_in_executor(executor, transcriber.transcribe_loop, loop),
         loop.run_in_executor(executor, translator.translate_loop, loop),
         wait_for_keypress(stop_event, translation_queue, cfg, transcriber)
@@ -269,7 +277,7 @@ async def main():
         pass
     finally:
         # Cancel tasks
-        for task in tasks[:3]:
+        for task in tasks[:4]:
             task.cancel()
 
         executor.shutdown(wait=True)
