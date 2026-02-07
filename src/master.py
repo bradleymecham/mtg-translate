@@ -4,6 +4,7 @@ import aioconsole
 import concurrent.futures
 import argparse
 import json
+import html
 import socket
 from config_manager import ConfigManager
 from transcription import TranscriptionEngine
