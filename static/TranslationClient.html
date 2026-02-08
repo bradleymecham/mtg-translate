@@ -324,9 +324,9 @@
         let selectedLanguage = 'en';
         let audioEnabled = false;
         let volume = 0.8;
-        const audioQueue = [];
         const mainPlayer = new Audio();
         mainPlayer.autoplay = true;
+        const audioQueue = [];
         let isPlayingAudio = false;
         let autoScroll = true;
         let isFirstMessage = true;
@@ -468,7 +468,7 @@
 
         // Process audio queue
         async function processAudioQueue() {
-            if (isPlayingAudio || audioQueue.length === 0 | !audioEnabled) {
+            if (isPlayingAudio || audioQueue.length === 0 || !audioEnabled) {
                 return;
             }
 
@@ -509,19 +509,31 @@
                     // Handle different message types
                     if (data.type === 'text') {
                         // Text translation message
+                        console.log('Attempting to display text');
+
                         if (data.language_code === selectedLanguage) {
                             addTranslation(data.text);
                         }
                     } else if (data.type === 'audio') {
-                        // Audio message
-                        if (data.language_code === selectedLanguage && data.audio_data) {
-                            audioQueue.push(data.audio_data);
+                        // Text translation message
+                        if (data.language_code === selectedLanguage) {
+                            addTranslation(data.text);
+                        }// Audio message
+                        console.log('Attempting to play back audio');
+
+                        if (audioEnabled &&
+                            data.language_code === selectedLanguage && 
+                            data.audio) {
+                            
+                            audioQueue.push(data.audio);
                             processAudioQueue();
                         }
                     } else if (data.text) {
                         // Legacy format - parse nested JSON
                         const payload = JSON.parse(data.text);
                         
+                        console.log('Legacy text');
+
                         if (payload.text === "New Talk") {
                             addTranslation('', true);
                         } else if (payload.language_code === selectedLanguage) {

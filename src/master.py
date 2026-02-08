@@ -57,27 +57,13 @@ class LanguagePortServer:
             self.server.close()
             await self.server.wait_closed()
             
-    async def broadcast_audio(self, text):
-        """Generate and broadcast audio to all connected slaves"""
+    async def broadcast_audio(self, message):
+        """Broadcast audio to all connected slaves"""
+        if not message:
+            return  # No message, we shouldn't be here
         if not self.clients:
-            return  # No clients, skip TTS generation
+            return  # No clients, skip broadcast
             
-        # Generate audio in thread pool (blocking operation)
-        audio_base64 = await asyncio.get_event_loop().run_in_executor(
-            None, self.tts_engine.generate_audio, text, self.lang_code
-        )
-        
-        if not audio_base64:
-            return
-            
-        # Create message with audio data
-        message = {
-            "type": "audio",
-            "language_code": self.lang_code,
-            "text": text,
-            "audio_data": audio_base64
-        }
-        
         # Serialize to JSON and encode
         json_data = json.dumps(message).encode('utf-8')
         # Send length prefix (4 bytes) followed by data
@@ -142,14 +128,20 @@ class MasterTranslationEngine:
         if self.config.debug_mode:
             print(f"{lang_name} [{dest_code}]: {translated_text}")
 
+        audio_base64 = port_server.tts_engine.generate_audio(
+            translated_text, dest_code)
+
+        payload = {
+            "type": "audio",
+            "language_code": dest_code,
+            "text": translated_text,
+            "audio": audio_base64
+        }
+        message_to_send = json.dumps(payload)
+
         # Broadcast to web clients (original functionality)
         if self.network_server.clients:
-            payload = {
-                "language_code": dest_code,
-                "text": translated_text
-            }
-            message_to_send = json.dumps({"text": json.dumps(payload)})
-            
+
             future = asyncio.run_coroutine_threadsafe(
                 self.network_server.broadcast_message(message_to_send), loop)
             try:
@@ -159,8 +151,9 @@ class MasterTranslationEngine:
 
         # Broadcast audio to port server slaves
         if port_server.clients:
+
             future = asyncio.run_coroutine_threadsafe(
-                port_server.broadcast_audio(translated_text), loop)
+                port_server.broadcast_audio(message_to_send), loop)
             try:
                 future.result(timeout=15)
             except Exception as e:
