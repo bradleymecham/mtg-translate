@@ -57,15 +57,15 @@ class LanguagePortServer:
             self.server.close()
             await self.server.wait_closed()
             
-    async def broadcast_audio(self, message):
+    async def broadcast_audio(self, payload):
         """Broadcast audio to all connected slaves"""
-        if not message:
-            return  # No message, we shouldn't be here
+        if not payload:
+            return  # No payload, we shouldn't be here
         if not self.clients:
             return  # No clients, skip broadcast
             
         # Serialize to JSON and encode
-        json_data = json.dumps(message).encode('utf-8')
+        json_data = json.dumps(payload).encode('utf-8')
         # Send length prefix (4 bytes) followed by data
         length_prefix = len(json_data).to_bytes(4, byteorder='big')
         full_message = length_prefix + json_data
@@ -137,10 +137,11 @@ class MasterTranslationEngine:
             "text": translated_text,
             "audio": audio_base64
         }
-        message_to_send = json.dumps(payload)
 
         # Broadcast to web clients (original functionality)
         if self.network_server.clients:
+
+            message_to_send = json.dumps(payload)
 
             future = asyncio.run_coroutine_threadsafe(
                 self.network_server.broadcast_message(message_to_send), loop)
@@ -153,7 +154,7 @@ class MasterTranslationEngine:
         if port_server.clients:
 
             future = asyncio.run_coroutine_threadsafe(
-                port_server.broadcast_audio(message_to_send), loop)
+                port_server.broadcast_audio(payload), loop)
             try:
                 future.result(timeout=15)
             except Exception as e:

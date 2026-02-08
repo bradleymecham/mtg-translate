@@ -147,7 +147,7 @@ class SlaveClient:
             if msg_type == "audio":
                 lang_code = message.get("language_code")
                 text = message.get("text")
-                audio_data = message.get("audio_data")
+                audio_data = message.get("audio")
                 
                 if self.verbose:
                     print(f"[{lang_code}] {text}")
