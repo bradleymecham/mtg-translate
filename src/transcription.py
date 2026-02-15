@@ -13,6 +13,7 @@ class TranscriptionEngine:
         self.config = config_manager
         self.translation_queue = translation_queue
         self.stop_event = stop_event
+        self.audio = pyaudio.PyAudio()
         self.audio_queue = queue.Queue()
         self.monitor_queue = queue.Queue()
         self.monitor_enabled = False
@@ -54,7 +55,6 @@ class TranscriptionEngine:
     # Function for processing the audio stream
     def audio_stream(self, loop):
 
-        audio = pyaudio.PyAudio()
         stream = None
 
         FORMAT = pyaudio.paInt16
@@ -67,7 +67,7 @@ class TranscriptionEngine:
 
 
         try:
-            stream = audio.open(
+            stream = self.audio.open(
                 format=FORMAT,
                 channels=CHANNELS,
                 rate=HW_RATE, 
@@ -119,13 +119,11 @@ class TranscriptionEngine:
             if stream:
                 stream.stop_stream()
                 stream.close()
-            audio.terminate()
 
         pass
 
     def monitor_loop(self, loop):
         """Plays the processed audio to the default output for monitoring."""
-        audio = pyaudio.PyAudio()
         stream = None
         GOOGLE_RATE = 16000
 
@@ -136,7 +134,7 @@ class TranscriptionEngine:
 
         try:
             # Open output stream
-            stream = audio.open(
+            stream = self.audio.open(
                 format=FORMAT,
                 channels=CHANNELS,
                 rate=RATE,
@@ -165,7 +163,6 @@ class TranscriptionEngine:
             if stream:
                 stream.stop_stream()
                 stream.close()
-            audio.terminate()
             print("--- Audio monitor stopped ---")
 
 
@@ -339,7 +336,8 @@ class TranscriptionEngine:
                     "Stream timed out",
                     "Stream removed",
                     "Deadline Exceeded",
-                    "Audio Timeout Error"
+                    "Audio Timeout Error",
+                    "499"
                 ]
                 # Check if this is one of those expected closures
                 is_expected = any(msg in err_str for msg in expected_errors)
@@ -348,11 +346,22 @@ class TranscriptionEngine:
                     # If we aren't paused, a quick status update is helpful.
                     # If we ARE paused, we stay silent because this is normal.
                     if not self.is_paused:
-                        print("Stream timed out or limit reached. "
+                        print("Stream timed out, limit reached, or 499 error. "
                               "Restarting session...")
+                    # Immediately restart the gRPC session
+                    continue
                 else:
                     # If something else (like a real network failure), print it.
                     print(f"Error in streaming recognition: {e}")
-                # Brief cooldown before the loop restarts the stream
-                time.sleep(1)
+                    # Brief cooldown before the loop restarts the stream
+                    time.sleep(1)
+        pass
+
+def __del__(self):
+    """Automatic cleanup when the object is destroyed."""
+    try:
+        if hasattr(self, 'audio'):
+            self.audio.terminate()
+            print("PyAudio terminated.")
+    except Exception:
         pass
