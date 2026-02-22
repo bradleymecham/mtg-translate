@@ -209,6 +209,24 @@ async def wait_for_keypress(stop_event, translation_queue, cfg, transcriber):
         except Exception as e:
             print(f"Error reading input: {e}")
 
+async def audio_broadcast_worker(transcriber, net_server, stop_event, loop):
+    """Bridge between the audio queue and the network broadcast."""
+    while not stop_event.is_set():
+        try:
+            # Get 16kHz mono chunk from the queue (thread-safe)
+            # We use a timeout so it can check stop_event regularly
+            chunk = await loop.run_in_executor(
+                None, lambda: transcriber.broadcast_queue.get(timeout=0.5)
+            )
+            if chunk:
+                await net_server.broadcast_binary(chunk)
+        except queue.Empty:
+            continue
+        except Exception as e:
+            if not stop_event.is_set():
+                print(f"Live audio broadcast error: {e}")
+            await asyncio.sleep(0.1)
+
 async def main():
     parser = argparse.ArgumentParser(description="Master Translation Server")
     parser.add_argument('-v', '--verbose', action='store_true',
@@ -265,6 +283,8 @@ async def main():
         loop.run_in_executor(executor, transcriber.monitor_loop, loop),
         loop.run_in_executor(executor, transcriber.transcribe_loop, loop),
         loop.run_in_executor(executor, translator.translate_loop, loop),
+        asyncio.create_task(
+            audio_broadcast_worker(transcriber, net, stop_event, loop)),
         wait_for_keypress(stop_event, translation_queue, cfg, transcriber)
     ]
 
@@ -273,8 +293,8 @@ async def main():
     except asyncio.CancelledError:
         pass
     finally:
-        # Cancel tasks
-        for task in tasks[:4]:
+        # Cancel all background tasks except wait_for_keypress
+        for task in tasks[:-1]:
             task.cancel()
 
         executor.shutdown(wait=True)

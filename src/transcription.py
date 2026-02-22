@@ -15,6 +15,8 @@ class TranscriptionEngine:
         self.stop_event = stop_event
         self.audio = pyaudio.PyAudio()
         self.audio_queue = queue.Queue()
+        # maxsize=100 ensures we never have more than ~2 seconds of lag
+        self.broadcast_queue = queue.Queue(maxsize=100)
         self.monitor_queue = queue.Queue()
         self.monitor_enabled = False
         self.speech_client = SpeechClient()
@@ -104,6 +106,15 @@ class TranscriptionEngine:
 
                     loop.call_soon_threadsafe(self.audio_queue.put_nowait, 
                                               resampled_bytes)
+
+                    # Also send to the local broadcast queue
+                    try:
+                        self.broadcast_queue.put_nowait(resampled_bytes)
+                    except queue.Full:
+                        # If the broadcast loop is falling behind, we drop
+                        # this frame to prioritize low latency.
+                        pass
+
                     # Add bytes to monitor
                     if self.monitor_enabled:
                         try:

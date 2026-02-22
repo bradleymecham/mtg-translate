@@ -294,6 +294,11 @@
                     <label for="audioEnabled" style="margin-bottom: 0;">Enable Audio Playback</label>
                 </div>
                 
+                <div class="checkbox-group" style="margin-top: 10px;">
+                    <input type="checkbox" id="liveAudioEnabled">
+                    <label for="liveAudioEnabled" style="margin-bottom: 0;">🔊 Live Audio</label>
+                </div>
+
                 <div class="volume-control" style="margin-top: 10px;">
                     <label for="volumeControl" style="margin-bottom: 0; min-width: 60px;">Volume:</label>
                     <input type="range" id="volumeControl" min="0" max="100" value="80">
@@ -330,6 +335,9 @@
         let isPlayingAudio = false;
         let autoScroll = true;
         let isFirstMessage = true;
+        let liveAudioEnabled = false;
+        let audioContext;
+        let nextStartTime = 0;
 
         // Get DOM elements
         const languageSelect = document.getElementById('languageSelect');
@@ -341,6 +349,7 @@
         const volumeDisplay = document.getElementById('volumeDisplay');
         const scrollToBottomBtn = document.getElementById('scrollToBottom');
         const clearButton = document.getElementById('clearButton');
+        const liveAudioCheckbox = document.getElementById('liveAudioEnabled');
 
         // Language selection
         languageSelect.addEventListener('change', (e) => {
@@ -488,6 +497,18 @@
             }
         }
 
+
+        liveAudioCheckbox.addEventListener('change', (e) => {
+            liveAudioEnabled = e.target.checked;
+            if (liveAudioEnabled && !audioContext) {
+            
+                // Initialize AudioContext on first user interaction
+                audioContext = new (window.AudioContext || 
+                    window.webkitAudioContext)({ sampleRate: 16000 });
+                nextStartTime = audioContext.currentTime;
+            }
+        });
+
         // Connect to WebSocket
         function connect() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -503,47 +524,80 @@
             };
 
             ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    
-                    // Handle different message types
-                    if (data.type === 'text') {
-                        // Text translation message
-                        console.log('Attempting to display text');
+                if (event.data instanceof Blob) {
+                    // This is our LIVE BINARY AUDIO
+                    if (!liveAudioEnabled) return;
 
-                        if (data.language_code === selectedLanguage) {
-                            addTranslation(data.text);
-                        }
-                    } else if (data.type === 'audio') {
-                        // Text translation message
-                        if (data.language_code === selectedLanguage) {
-                            addTranslation(data.text);
-                        }// Audio message
-                        console.log('Attempting to play back audio');
-
-                        if (audioEnabled &&
-                            data.language_code === selectedLanguage && 
-                            data.audio) {
-                            
-                            audioQueue.push(data.audio);
-                            processAudioQueue();
-                        }
-                    } else if (data.text) {
-                        // Legacy format - parse nested JSON
-                        const payload = JSON.parse(data.text);
+                    event.data.arrayBuffer().then(buffer => {
+                        const int16Array = new Int16Array(buffer);
+                        const float32Array = new Float32Array(int16Array.length);
                         
-                        console.log('Legacy text');
-
-                        if (payload.text === "New Talk") {
-                            addTranslation('', true);
-                        } else if (payload.language_code === selectedLanguage) {
-                            addTranslation(payload.text);
+                        // Convert 16-bit PCM to Float32 for Web Audio API
+                        for (let i = 0; i < int16Array.length; i++) {
+                            float32Array[i] = int16Array[i] / 32768.0;
                         }
+
+                        const audioBuffer = audioContext.createBuffer(1, float32Array.length, 16000);
+                        audioBuffer.getChannelData(0).set(float32Array);
+
+                        const source = audioContext.createBufferSource();
+                        source.buffer = audioBuffer;
+                        source.connect(audioContext.destination);
+
+                        // Schedule playback to start right after the last chunk
+                        const currentTime = audioContext.currentTime;
+                        if (nextStartTime < currentTime) {
+                            nextStartTime = currentTime + 0.05; // Small buffer for jitter
+                        }
+                        
+                        source.start(nextStartTime);
+                        nextStartTime += audioBuffer.duration;
+                    });
+                } else {
+                    try {
+                        const data = JSON.parse(event.data);
+                        
+                        // Handle different message types
+                        if (data.type === 'text') {
+                            // Text translation message
+                            console.log('Attempting to display text');
+
+                            if (data.language_code === selectedLanguage) {
+                                addTranslation(data.text);
+                            }
+                        } else if (data.type === 'audio') {
+                            // Text translation message
+                            if (data.language_code === selectedLanguage) {
+                                addTranslation(data.text);
+                            }// Audio message
+                            console.log('Attempting to play back audio');
+
+                            if (audioEnabled &&
+                                data.language_code === selectedLanguage && 
+                                data.audio) {
+                                
+                                audioQueue.push(data.audio);
+                                processAudioQueue();
+                            }
+                        } else if (data.text) {
+                            // Legacy format - parse nested JSON
+                            const payload = JSON.parse(data.text);
+                            
+                            console.log('Legacy text');
+
+                            if (payload.text === "New Talk") {
+                                addTranslation('', true);
+                            } else if (payload.language_code === selectedLanguage) {
+                                addTranslation(payload.text);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error parsing message:', error);
                     }
-                } catch (error) {
-                    console.error('Error parsing message:', error);
                 }
             };
+
+            ws.binaryType = 'blob';
 
             ws.onclose = () => {
                 console.log('WebSocket disconnected');
