@@ -15,8 +15,8 @@ class TranscriptionEngine:
         self.stop_event = stop_event
         self.audio = pyaudio.PyAudio()
         self.audio_queue = queue.Queue()
-        # maxsize=100 ensures we never have more than ~2 seconds of lag
-        self.broadcast_queue = queue.Queue(maxsize=100)
+        # maxsize=20 ensures we never have more than ~400ms of lag
+        self.broadcast_queue = queue.Queue(maxsize=20)
         self.monitor_queue = queue.Queue()
         self.monitor_enabled = False
         self.speech_client = SpeechClient()
