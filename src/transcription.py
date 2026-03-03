@@ -7,12 +7,32 @@ from scipy import signal
 import queue
 import time
 import struct
+import json
+import sys
 
 class TranscriptionEngine:
     def __init__(self, config_manager, translation_queue, stop_event):
         self.config = config_manager
         self.translation_queue = translation_queue
         self.stop_event = stop_event
+
+        try:
+            with open(self.config.google_credentials, 'r') as f:
+                creds_data = json.load(f)
+                self.project_id = creds_data['project_id']
+                print(f"--- Authenticated with Project: {self.project_id} ---")
+        except FileNotFoundError:
+            print(f"CRITICAL ERROR: Credentials file not found at {self.config.google_credentials}")
+            sys.exit(1)
+        except KeyError:
+            print(f"CRITICAL ERROR: 'project_id' missing from {self.config.google_credentials}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"CRITICAL ERROR: Failed to load credentials: {e}")
+            sys.exit(1)
+
+        self.recognizer = f"projects/{self.project_id}/locations/global/recognizers/_"
+
         self.audio = pyaudio.PyAudio()
         self.audio_queue = queue.Queue()
         # maxsize=20 ensures we never have more than ~400ms of lag
@@ -20,8 +40,6 @@ class TranscriptionEngine:
         self.monitor_queue = queue.Queue()
         self.monitor_enabled = False
         self.speech_client = SpeechClient()
-        self.project_id = "englishtexttojapanese"
-        self.recognizer = f"projects/{self.project_id}/locations/global/recognizers/_"
 
         self._restart_signal = "RESTART_STREAM" 
         self.is_paused = True 

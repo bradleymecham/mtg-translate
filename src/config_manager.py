@@ -39,7 +39,7 @@ class ConfigManager:
         self.curr_lang = 'en'
         
         self.base_keywords = [
-            "ward", "Aaronic priesthood", "In the name of Jesus Christ",
+            "ward", "Aaronic priesthood", "In the name of Jesus Christ", "Amen",
             "bishopric", "Relief Society", "elders", "deacons",
             "quorum", "testimony", "atonement", "ministering brother",
             "ministering sister", "ministering interview", 
