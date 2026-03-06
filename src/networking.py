@@ -89,6 +89,16 @@ class NetworkServer:
             await asyncio.wait([asyncio.create_task(client.send(message)) 
                 for client in self.clients])
 
+    async def broadcast_binary(self, data):
+        """Broadcasts raw binary audio to all connected websocket clients."""
+        if self.clients:
+            # Use gather to send to everyone at once.
+            # return_exceptions=True shields against individual client failures.
+            await asyncio.gather(
+                *[client.send(data) for client in self.clients],
+                return_exceptions=True
+            )
+        
     async def register_mDNS(self):
 
         # Get the first non-loopback IP for mDNS registration

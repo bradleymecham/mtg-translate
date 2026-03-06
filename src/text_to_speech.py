@@ -20,8 +20,8 @@ class TextToSpeechEngine:
             "ru": {"language_code": "ru-RU", "name": "ru-RU-Wavenet-A"},
             "pt": {"language_code": "pt-BR", "name": "pt-BR-Neural2-A"},
             "cn": {"language_code": "cmn-CN", "name": "cmn-CN-Wavenet-A"},
-            "sw": {"language_code": "sw-KE", "name": "sw-KE-Standard-A"},
-            "sw2": {"language_code": "sw-KE", "name": "sw-KE-Standard-A"}
+            "sw": {"language_code": "sw-KE", "name": "sw-KE-Chirp3-HD-Charon"},
+            "sw2": {"language_code": "sw-KE", "name": "sw-KE-Chirp3-HD-Aoede"}
         }
 
     def generate_audio(self, text, lang_code):

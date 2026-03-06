@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Translation">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live Translation</title>
@@ -290,10 +294,15 @@
 
             <div class="audio-controls">
                 <div class="checkbox-group">
-                    <input type="checkbox" id="audioEnabled" checked>
+                    <input type="checkbox" id="audioEnabled">
                     <label for="audioEnabled" style="margin-bottom: 0;">Enable Audio Playback</label>
                 </div>
                 
+                <div class="checkbox-group" style="margin-top: 10px;">
+                    <input type="checkbox" id="liveAudioEnabled">
+                    <label for="liveAudioEnabled" style="margin-bottom: 0;">🔊 Live Audio</label>
+                </div>
+
                 <div class="volume-control" style="margin-top: 10px;">
                     <label for="volumeControl" style="margin-bottom: 0; min-width: 60px;">Volume:</label>
                     <input type="range" id="volumeControl" min="0" max="100" value="80">
@@ -322,12 +331,17 @@
     <script>
         let ws;
         let selectedLanguage = 'en';
-        let audioEnabled = true;
+        let audioEnabled = false;
         let volume = 0.8;
+        const mainPlayer = new Audio();
+        mainPlayer.autoplay = true;
         const audioQueue = [];
         let isPlayingAudio = false;
         let autoScroll = true;
         let isFirstMessage = true;
+        let liveAudioEnabled = false;
+        let audioContext;
+        let nextStartTime = 0;
 
         // Get DOM elements
         const languageSelect = document.getElementById('languageSelect');
@@ -339,6 +353,7 @@
         const volumeDisplay = document.getElementById('volumeDisplay');
         const scrollToBottomBtn = document.getElementById('scrollToBottom');
         const clearButton = document.getElementById('clearButton');
+        const liveAudioCheckbox = document.getElementById('liveAudioEnabled');
 
         // Language selection
         languageSelect.addEventListener('change', (e) => {
@@ -444,20 +459,20 @@
                 const url = URL.createObjectURL(blob);
 
                 // Create and play audio
-                const audio = new Audio(url);
-                audio.volume = volume;
+                mainPlayer.src = url;
+                mainPlayer.volume = volume;
 
                 return new Promise((resolve, reject) => {
-                    audio.onended = () => {
+                    mainPlayer.onended = () => {
                         URL.revokeObjectURL(url);
                         resolve();
                     };
-                    audio.onerror = (e) => {
+                    mainPlayer.onerror = (e) => {
                         console.error('Audio playback error:', e);
                         URL.revokeObjectURL(url);
                         reject(e);
                     };
-                    audio.play().catch(reject);
+                    mainPlayer.play().catch(reject);
                 });
             } catch (error) {
                 console.error('Error playing audio:', error);
@@ -466,7 +481,7 @@
 
         // Process audio queue
         async function processAudioQueue() {
-            if (isPlayingAudio || audioQueue.length === 0) {
+            if (isPlayingAudio || audioQueue.length === 0 || !audioEnabled) {
                 return;
             }
 
@@ -486,6 +501,29 @@
             }
         }
 
+
+        liveAudioCheckbox.addEventListener('change', (e) => {
+            liveAudioEnabled = e.target.checked;
+            if (liveAudioEnabled) {
+                if (!audioContext) {
+                    // Initialize AudioContext on first user interaction
+                    audioContext = new (window.AudioContext ||
+                        window.webkitAudioContext)({ sampleRate: 16000 });
+                    nextStartTime = audioContext.currentTime;
+                }
+
+                // Tell iOS we're playing media
+                if ('mediaSession' in navigator) {
+                    navigator.mediaSession.playbackState = 'playing';
+                }
+            } else {
+                // Tell iOS we've paused
+                if ('mediaSession' in navigator) {
+                    navigator.mediaSession.playbackState = 'paused';
+                }
+            }
+        });
+
         // Connect to WebSocket
         function connect() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -501,35 +539,88 @@
             };
 
             ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    
-                    // Handle different message types
-                    if (data.type === 'text') {
-                        // Text translation message
-                        if (data.language_code === selectedLanguage) {
-                            addTranslation(data.text);
-                        }
-                    } else if (data.type === 'audio') {
-                        // Audio message
-                        if (data.language_code === selectedLanguage && data.audio_data) {
-                            audioQueue.push(data.audio_data);
-                            processAudioQueue();
-                        }
-                    } else if (data.text) {
-                        // Legacy format - parse nested JSON
-                        const payload = JSON.parse(data.text);
+                if (event.data instanceof Blob) {
+                    // This is our LIVE BINARY AUDIO
+                    if (!liveAudioEnabled) return;
+
+                    event.data.arrayBuffer().then(buffer => {
+                        const int16Array = new Int16Array(buffer);
+                        const float32Array = new Float32Array(int16Array.length);
                         
-                        if (payload.text === "New Talk") {
-                            addTranslation('', true);
-                        } else if (payload.language_code === selectedLanguage) {
-                            addTranslation(payload.text);
+                        // Convert 16-bit PCM to Float32 for Web Audio API
+                        for (let i = 0; i < int16Array.length; i++) {
+                            float32Array[i] = int16Array[i] / 32768.0;
                         }
+
+                        const audioBuffer = audioContext.createBuffer(1, float32Array.length, 16000);
+                        audioBuffer.getChannelData(0).set(float32Array);
+
+                        const source = audioContext.createBufferSource();
+                        source.buffer = audioBuffer;
+                        source.connect(audioContext.destination);
+
+                        // Simple, low-latency scheduling
+                        const currentTime = audioContext.currentTime;
+
+                        // If we've fallen behind by more than 100ms,
+                        // reset to catch up
+                        if (nextStartTime < currentTime - 0.1) {
+                            console.log(
+                                'Audio fell behind, resetting to catch up');
+                            nextStartTime = currentTime + 0.01;
+                        } else if (nextStartTime < currentTime) {
+                            // Minimal buffer for jitter
+                            nextStartTime = currentTime + 0.01;
+                        }
+                        
+                        source.start(nextStartTime);
+                        nextStartTime += audioBuffer.duration;
+                    });
+                } else {
+                    try {
+                        const data = JSON.parse(event.data);
+                        
+                        // Handle different message types
+                        if (data.type === 'text') {
+                            // Text translation message
+                            console.log('Attempting to display text');
+
+                            if (data.language_code === selectedLanguage) {
+                                addTranslation(data.text);
+                            }
+                        } else if (data.type === 'audio') {
+                            // Text translation message
+                            if (data.language_code === selectedLanguage) {
+                                addTranslation(data.text);
+                            }// Audio message
+                            console.log('Attempting to play back audio');
+
+                            if (audioEnabled &&
+                                data.language_code === selectedLanguage && 
+                                data.audio) {
+                                
+                                audioQueue.push(data.audio);
+                                processAudioQueue();
+                            }
+                        } else if (data.text) {
+                            // Legacy format - parse nested JSON
+                            const payload = JSON.parse(data.text);
+                            
+                            console.log('Legacy text');
+
+                            if (payload.text === "New Talk") {
+                                addTranslation('', true);
+                            } else if (payload.language_code === selectedLanguage) {
+                                addTranslation(payload.text);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error parsing message:', error);
                     }
-                } catch (error) {
-                    console.error('Error parsing message:', error);
                 }
             };
+
+            ws.binaryType = 'blob';
 
             ws.onclose = () => {
                 console.log('WebSocket disconnected');
@@ -547,6 +638,40 @@
 
         // Start connection
         connect();
+
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: 'Live Translation',
+                artist: 'Church Service',
+                album: 'Real-time Audio Stream'
+            });
+
+            // Tell iOS this is ongoing media playback
+            navigator.mediaSession.playbackState = 'playing';
+
+            // Handle media controls (lock screen, control center)
+            navigator.mediaSession.setActionHandler('play', () => {
+                console.log('Media session: play');
+                if (liveAudioEnabled && audioContext) {
+                    audioContext.resume();
+                }
+            });
+
+            navigator.mediaSession.setActionHandler('pause', () => {
+                console.log('Media session: pause');
+                if (audioContext) {
+                    audioContext.suspend();
+                }
+            });
+
+            // Prevent iOS from stopping on perceived "end"
+            navigator.mediaSession.setActionHandler('stop', () => {
+                console.log('Media session: stop (ignoring)');
+                // Don't actually stop - we're a live stream
+            });
+
+            console.log('Media Session API initialized');
+        }
     </script>
 </body>
 </html>

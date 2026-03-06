@@ -7,18 +7,43 @@ from scipy import signal
 import queue
 import time
 import struct
+import json
+import os
 
 class TranscriptionEngine:
     def __init__(self, config_manager, translation_queue, stop_event):
         self.config = config_manager
         self.translation_queue = translation_queue
         self.stop_event = stop_event
+
+        try:
+            creds_path = self.config.google_credentials
+            if not os.path.exists(creds_path):
+                raise FileNotFoundError(f"Credentials file not found at {creds_path}")
+
+            with open(creds_path, 'r') as f:
+                creds_data = json.load(f)
+                self.project_id = creds_data.get('project_id')
+
+                if not self.project_id:
+                    raise KeyError("The JSON file is valid, but 'project_id is missing.")
+
+                print(f"--- Authenticated with Project: {self.project_id} ---")
+
+        except Exception as e:
+            print(f"\n[CRITICAL ERROR] {e}")
+            print("The engine cannot start without valid Google Cloud credentials.")
+            raise
+
+        self.recognizer = f"projects/{self.project_id}/locations/global/recognizers/_"
+
+        self.audio = pyaudio.PyAudio()
         self.audio_queue = queue.Queue()
+        # maxsize=20 ensures we never have more than ~400ms of lag
+        self.broadcast_queue = queue.Queue(maxsize=20)
         self.monitor_queue = queue.Queue()
         self.monitor_enabled = False
         self.speech_client = SpeechClient()
-        self.project_id = "englishtexttojapanese"
-        self.recognizer = f"projects/{self.project_id}/locations/global/recognizers/_"
 
         self._restart_signal = "RESTART_STREAM" 
         self.is_paused = True 
@@ -54,7 +79,6 @@ class TranscriptionEngine:
     # Function for processing the audio stream
     def audio_stream(self, loop):
 
-        audio = pyaudio.PyAudio()
         stream = None
 
         FORMAT = pyaudio.paInt16
@@ -67,7 +91,7 @@ class TranscriptionEngine:
 
 
         try:
-            stream = audio.open(
+            stream = self.audio.open(
                 format=FORMAT,
                 channels=CHANNELS,
                 rate=HW_RATE, 
@@ -104,6 +128,15 @@ class TranscriptionEngine:
 
                     loop.call_soon_threadsafe(self.audio_queue.put_nowait, 
                                               resampled_bytes)
+
+                    # Also send to the local broadcast queue
+                    try:
+                        self.broadcast_queue.put_nowait(resampled_bytes)
+                    except queue.Full:
+                        # If the broadcast loop is falling behind, we drop
+                        # this frame to prioritize low latency.
+                        pass
+
                     # Add bytes to monitor
                     if self.monitor_enabled:
                         try:
@@ -119,13 +152,11 @@ class TranscriptionEngine:
             if stream:
                 stream.stop_stream()
                 stream.close()
-            audio.terminate()
 
         pass
 
     def monitor_loop(self, loop):
         """Plays the processed audio to the default output for monitoring."""
-        audio = pyaudio.PyAudio()
         stream = None
         GOOGLE_RATE = 16000
 
@@ -136,7 +167,7 @@ class TranscriptionEngine:
 
         try:
             # Open output stream
-            stream = audio.open(
+            stream = self.audio.open(
                 format=FORMAT,
                 channels=CHANNELS,
                 rate=RATE,
@@ -165,7 +196,6 @@ class TranscriptionEngine:
             if stream:
                 stream.stop_stream()
                 stream.close()
-            audio.terminate()
             print("--- Audio monitor stopped ---")
 
 
@@ -339,7 +369,8 @@ class TranscriptionEngine:
                     "Stream timed out",
                     "Stream removed",
                     "Deadline Exceeded",
-                    "Audio Timeout Error"
+                    "Audio Timeout Error",
+                    "499"
                 ]
                 # Check if this is one of those expected closures
                 is_expected = any(msg in err_str for msg in expected_errors)
@@ -348,11 +379,22 @@ class TranscriptionEngine:
                     # If we aren't paused, a quick status update is helpful.
                     # If we ARE paused, we stay silent because this is normal.
                     if not self.is_paused:
-                        print("Stream timed out or limit reached. "
+                        print("Stream timed out, limit reached, or 499 error. "
                               "Restarting session...")
+                    # Immediately restart the gRPC session
+                    continue
                 else:
                     # If something else (like a real network failure), print it.
                     print(f"Error in streaming recognition: {e}")
-                # Brief cooldown before the loop restarts the stream
-                time.sleep(1)
+                    # Brief cooldown before the loop restarts the stream
+                    time.sleep(1)
+        pass
+
+def __del__(self):
+    """Automatic cleanup when the object is destroyed."""
+    try:
+        if hasattr(self, 'audio'):
+            self.audio.terminate()
+            print("PyAudio terminated.")
+    except Exception:
         pass

@@ -39,17 +39,19 @@ class ConfigManager:
         self.curr_lang = 'en'
         
         self.base_keywords = [
-            "ward", "Aaronic priesthood", "In the name of Jesus Christ",
+            "ward", "Aaronic priesthood", "In the name of Jesus Christ", "Amen",
             "bishopric", "Relief Society", "elders", "deacons",
             "quorum", "testimony", "atonement", "ministering brother",
             "ministering sister", "ministering interview", 
-            "Melchizedek priesthood",
+            "Melchizedek priesthood", "Melchizedek", "Aaronic",
             "Dallin H. Oaks", "Henry B. Eyring", "D. Todd Christofferson",
             "Deiter F. Uchtdorf", "David A. Bednar", "Quentin L. Cook",
             "Neil L. Andersen", "Ronald A. Rasband", "Gary E. Stevenson",
             "Dale G. Renlund", "Gerrit W. Gong", "Ulisses Soares",
-            "Patrick Kearon", "Gerald Causse", "Eyring", "Uchtdorf", "Bednar",
-            "Quentin", "Rasband", "Renlund", "Soares", "Kearon", "Causse",
+            "Patrick Kearon", "Gerald Causse", "Clark G. Gilbert", "Eyring",
+            "Uchtdorf", "Bednar", "Quentin", "Rasband", "Renlund", "Soares",
+            "Kearon", "Causse", "Gilbert", "tithing", "tithes", "prophet",
+            "Nephi", "loaves and fishes", "Heavenly Father", "Father in Heaven",
             "Primary", "Primary songs", "righteous", "area presidency",
             "first presidency", "Quorum of the Twelve", "ordained",
             "Doctrine and Covenants", "first estate", "second estate",
