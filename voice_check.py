@@ -17,7 +17,7 @@ def list_swahili_voices(key_path):
         found_any = False
         for voice in response.voices:
             # Filtering for Swahili (sw)
-            if "ja" in voice.language_codes[0]:
+            if "sw" in voice.language_codes[0]:
                 found_any = True
                 gender = texttospeech.SsmlVoiceGender(voice.ssml_gender).name
                 
