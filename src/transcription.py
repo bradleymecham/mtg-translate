@@ -8,7 +8,7 @@ import queue
 import time
 import struct
 import json
-import sys
+import os
 
 class TranscriptionEngine:
     def __init__(self, config_manager, translation_queue, stop_event):
@@ -17,19 +17,23 @@ class TranscriptionEngine:
         self.stop_event = stop_event
 
         try:
-            with open(self.config.google_credentials, 'r') as f:
+            creds_path = self.config.google_credentials
+            if not os.path.exists(creds_path):
+                raise FileNotFoundError(f"Credentials file not found at {creds_path}")
+
+            with open(creds_path, 'r') as f:
                 creds_data = json.load(f)
-                self.project_id = creds_data['project_id']
+                self.project_id = creds_data.get('project_id')
+
+                if not self.project_id:
+                    raise KeyError("The JSON file is valid, but 'project_id is missing.")
+
                 print(f"--- Authenticated with Project: {self.project_id} ---")
-        except FileNotFoundError:
-            print(f"CRITICAL ERROR: Credentials file not found at {self.config.google_credentials}")
-            sys.exit(1)
-        except KeyError:
-            print(f"CRITICAL ERROR: 'project_id' missing from {self.config.google_credentials}")
-            sys.exit(1)
+
         except Exception as e:
-            print(f"CRITICAL ERROR: Failed to load credentials: {e}")
-            sys.exit(1)
+            print(f"\n[CRITICAL ERROR] {e}")
+            print("The engine cannot start without valid Google Cloud credentials.")
+            raise
 
         self.recognizer = f"projects/{self.project_id}/locations/global/recognizers/_"
 

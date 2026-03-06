@@ -241,70 +241,80 @@ async def main():
     loop = asyncio.get_running_loop()
     executor = concurrent.futures.ThreadPoolExecutor()
 
-    # Initialize modules
-    cfg = ConfigManager()
-    cfg.debug_mode = args.verbose
-
-    transcriber = TranscriptionEngine(cfg, translation_queue, stop_event)
-    net = NetworkServer(transcriber)
-    tts = TextToSpeechEngine(cfg, net)
-
-    # Create port servers for each language
-    port_servers = {}
-    current_port = args.start_port
-    
-    print("\n=== Language Port Assignments ===")
-    for lang_code, lang_name in cfg.target_languages.items():
-        port_servers[lang_code] = LanguagePortServer(
-            lang_code, current_port, cfg, tts, loop
-        )
-        print(f"{lang_name} ({lang_code}): port {current_port}")
-        current_port += 1
-    print()
-
-    # Create master translation engine with port servers
-    translator = MasterTranslationEngine(cfg, translation_queue, net, 
-                                        port_servers, stop_event)
-
-    # Start all servers
-    await net.register_mDNS()
-    await net.start_servers()
-    
-    # Start language port servers
-    for port_server in port_servers.values():
-        await port_server.start()
-    
-    print("\n=== Master Server Ready ===")
-    print("Web interface: http://captions.local:8080")
-    print("Slaves can connect to language-specific ports listed above\n")
-    
-    tasks = [
-        loop.run_in_executor(executor, transcriber.audio_stream, loop),
-        loop.run_in_executor(executor, transcriber.monitor_loop, loop),
-        loop.run_in_executor(executor, transcriber.transcribe_loop, loop),
-        loop.run_in_executor(executor, translator.translate_loop, loop),
-        asyncio.create_task(
-            audio_broadcast_worker(transcriber, net, stop_event, loop)),
-        wait_for_keypress(stop_event, translation_queue, cfg, transcriber)
-    ]
-
     try:
+        # Initialize modules
+        cfg = ConfigManager()
+        cfg.debug_mode = args.verbose
+
+        transcriber = TranscriptionEngine(cfg, translation_queue, stop_event)
+        net = NetworkServer(transcriber)
+        tts = TextToSpeechEngine(cfg, net)
+
+        # Create port servers for each language
+        port_servers = {}
+        current_port = args.start_port
+    
+        print("\n=== Language Port Assignments ===")
+        for lang_code, lang_name in cfg.target_languages.items():
+            port_servers[lang_code] = LanguagePortServer(
+                lang_code, current_port, cfg, tts, loop
+            )
+            print(f"{lang_name} ({lang_code}): port {current_port}")
+            current_port += 1
+
+        # Create master translation engine with port servers
+        translator = MasterTranslationEngine(cfg, translation_queue, net,
+                                            port_servers, stop_event)
+
+        # Start all servers
+        await net.register_mDNS()
+        await net.start_servers()
+
+        # Start language port servers
+        for port_server in port_servers.values():
+            await port_server.start()
+
+        print("\n=== Master Server Ready ===")
+        print("Web interface: http://captions.local:8080")
+        print("Slaves can connect to language-specific ports listed above\n")
+
+        tasks = [
+            loop.run_in_executor(executor, transcriber.audio_stream, loop),
+            loop.run_in_executor(executor, transcriber.monitor_loop, loop),
+            loop.run_in_executor(executor, transcriber.transcribe_loop, loop),
+            loop.run_in_executor(executor, translator.translate_loop, loop),
+            asyncio.create_task(
+                audio_broadcast_worker(transcriber, net, stop_event, loop)),
+            wait_for_keypress(stop_event, translation_queue, cfg, transcriber)
+        ]
+
         await asyncio.gather(*tasks)
+
     except asyncio.CancelledError:
         pass
+    except (FileNotFoundError, KeyError) as e:
+        print(f"\n[CONFIGURATION ERROR] {e}")
+        print("Please check config.ini and service account JSON file.")
+    except Exception as e:
+        print(f"\n[UNEXPECTED ERROR] {e}")
     finally:
+        print("\nCleaning up resources . . . ")
+
         # Cancel all background tasks except wait_for_keypress
-        for task in tasks[:-1]:
-            task.cancel()
+        if 'tasks' in locals():
+            for task in tasks[:-1]:
+                task.cancel()
 
         executor.shutdown(wait=True)
 
         # Stop language port servers
-        for port_server in port_servers.values():
-            await port_server.stop()
+        if 'port_servers' in locals():
+            for port_server in port_servers.values():
+                await port_server.stop()
 
-        await net.stop_servers()
-        await net.unregister_mDNS()
+        if 'net' in locals():
+            await net.stop_servers()
+            await net.unregister_mDNS()
 
         stop_event.clear()
 
