@@ -55,7 +55,10 @@ class ConfigManager:
             "Primary", "Primary songs", "righteous", "area presidency",
             "first presidency", "Quorum of the Twelve", "ordained",
             "Doctrine and Covenants", "first estate", "second estate",
-            "Fall of Adam", "exaltation"
+            "Fall of Adam", "exaltation","priesthood","apostle","stake",
+            "Stake President", "President Oaks", "President Eyring", "Elder",
+            "President Uchtdorf","Enos","Omni","Mosiah","Alma","Helaman",
+            "Mormon","Ether","Moroni","Words of Mormon"
         ]
 
         # Read custom words from config.ini

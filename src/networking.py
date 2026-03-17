@@ -8,6 +8,78 @@ from zeroconf.asyncio import AsyncZeroconf
 from zeroconf import ServiceInfo
 import socket
 
+class LanguagePortServer:
+    """Manages individual port servers for each language"""
+    def __init__(self, lang_code, port, config, tts_engine, loop):
+        self.lang_code = lang_code
+        self.port = port
+        self.config = config
+        self.tts_engine = tts_engine
+        self.loop = loop
+        self.clients = set()
+        self.server = None
+
+    async def handle_client(self, reader, writer):
+        """Handle a new slave connection"""
+        addr = writer.get_extra_info('peername')
+        print(f"[{self.lang_code}:{self.port}] Slave connected from {addr}")
+        self.clients.add((reader, writer))
+
+        try:
+            # Keep connection alive and wait for disconnect
+            while True:
+                data = await reader.read(100)
+                if not data:
+                    break
+                await asyncio.sleep(0.1)
+        except Exception as e:
+            print(f"[{self.lang_code}:{self.port}] Connection error: {e}")
+        finally:
+            print(f"[{self.lang_code}:{self.port}] Slave disconnected from {addr}")
+            self.clients.discard((reader, writer))
+            writer.close()
+            await writer.wait_closed()
+
+    async def start(self):
+        """Start the port server"""
+        self.server = await asyncio.start_server(
+            self.handle_client, '0.0.0.0', self.port)
+        lang_name = self.config.LANGUAGE_MAP[self.lang_code].display_name
+        print(f"✓ Language server started: {lang_name} on port {self.port}")
+
+    async def stop(self):
+        """Stop the port server"""
+        if self.server:
+            self.server.close()
+            await self.server.wait_closed()
+
+    async def broadcast_audio(self, payload):
+        """Broadcast audio to all connected slaves"""
+        if not payload:
+            return  # No payload, we shouldn't be here
+        if not self.clients:
+            return  # No clients, skip broadcast
+
+        # Serialize to JSON and encode
+        json_data = json.dumps(payload).encode('utf-8')
+        # Send length prefix (4 bytes) followed by data
+        length_prefix = len(json_data).to_bytes(4, byteorder='big')
+        full_message = length_prefix + json_data
+
+        # Broadcast to all connected clients
+        disconnected = []
+        for reader, writer in self.clients:
+            try:
+                writer.write(full_message)
+                await writer.drain()
+            except Exception as e:
+                print(f"[{self.lang_code}:{self.port}] Error sending to client: {e}")
+                disconnected.append((reader, writer))
+
+        # Remove disconnected clients
+        for client in disconnected:
+            self.clients.discard(client)
+
 class NetworkServer:
     def __init__(self, transcriber=None):
         self.clients = set()
