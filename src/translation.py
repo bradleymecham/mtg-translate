@@ -23,7 +23,7 @@ class TranslationEngine:
             target_language=(trans_code))['translatedText']
 
     def process_and_broadcast_single_lang(self, loop, original_text, orig_code,
-                                          dest_code):
+                                          dest_code, segment_id):
         lang_name = self.config.LANGUAGE_MAP[dest_code].display_name
 
         # Get the port server for this language
@@ -52,6 +52,8 @@ class TranslationEngine:
 
         payload = {
             "type": "audio",
+            "id": segment_id,
+            "is_final": True,
             "language_code": dest_code,
             "text": translated_text,
             "audio": audio_base64
@@ -83,11 +85,26 @@ class TranslationEngine:
         while not self.stop_event.is_set():
             orig_code = self.config.curr_lang
             try:
-                original_text = self.translation_queue.get(timeout=1)
+                data = self.translation_queue.get(timeout=1)
 
-                for dest_code, lang_name in self.config.target_languages.items():
-                    self.process_and_broadcast_single_lang(
-                        loop, original_text, orig_code, dest_code)
+                if self.network_server.clients:
+                    peek_payload = {
+                        "type": "peek",
+                        "id": data["id"],
+                        "text": data["text"],
+                        "is_final": data["is_final"],
+                        "language_code": data["language_code"]
+                    }
+                    asyncio.run_coroutine_threadsafe(
+                        self.network_server.broadcast_message(
+                            json.dumps(peek_payload)), loop)
+
+                # Only translate and do TTS when the sentence is finished
+                if data["is_final"]:
+                    for dest_code, lang_name in self.config.target_languages.items():
+                        self.process_and_broadcast_single_lang(
+                            loop, data["text"], orig_code,
+                            dest_code, data["id"])
 
                 self.translation_queue.task_done()
             except queue.Empty:

@@ -9,6 +9,7 @@ import time
 import struct
 import json
 import os
+import uuid
 
 class TranscriptionEngine:
     def __init__(self, config_manager, translation_queue, stop_event):
@@ -17,6 +18,9 @@ class TranscriptionEngine:
         self.stop_event = stop_event
         self.enable_punctuation = True
         self.restart_needed = False
+        self.current_segment_id = str(uuid.uuid4())[:8]
+        self.last_interim_text = ""
+        self.last_interim_time = 0
 
         try:
             creds_path = self.config.google_credentials
@@ -352,30 +356,40 @@ class TranscriptionEngine:
 
                     result = response.results[0]
 
-                    if not result.is_final:
-                        # Show what Google is "thinking" in real-time
-                        # Useful for debugging
-                        #loop.call_soon_threadsafe(print, 
-                        #    f"Interim: {result.alternatives[0].transcript}")
-                        pass
-                    if result.is_final:
-                        if (not result.alternatives or
-                            len(result.alternatives) == 0):
-                            original_text = ""
-                        else:
-                            original_text = (
-                                result.alternatives[0].transcript.strip())
+                    is_final = result.is_final
+                    if not result.alternatives:
+                        continue
+                    transcript = result.alternatives[0].transcript.strip()
+                    if not transcript:
+                        continue
 
-                        if not original_text:
-                            continue
+                    if not is_final:
+                        now = time.time()
+                        word_count = len(transcript.split())
+                        old_word_count = len(self.last_interim_text.split())
+                        if ((word_count - old_word_count < 3) and
+                            (now - self.last_interim_time < 1.5)):
+                                continue
+                        self.last_interim_text = transcript
+                        self.last_interim_time = now
+
+                    payload = {
+                        "id": self.current_segment_id,
+                        "text": transcript,
+                        "is_final": is_final,
+                        "language_code": curr_lang_code
+                    }
+                    self.translation_queue.put(payload)
+
+                    if is_final:
+                        # Reset for the next sentence
+                        self.current_segment_id = str(uuid.uuid4())[:8]
+                        self.last_interim_text = ""
 
                         # Print transcription safely on the main loop
                         if self.config.debug_mode:
                             loop.call_soon_threadsafe(print,
-                                f"Orig.: {original_text}")
- 
-                        # Send result to the translation thread queue
-                        self.translation_queue.put(original_text)
+                                f"Finalized: {transcript}")
 
             except Exception as e:
                 err_str = str(e)

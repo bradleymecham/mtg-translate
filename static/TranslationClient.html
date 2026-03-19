@@ -269,6 +269,12 @@
         .clear-button:hover {
             background: #ee5a52;
         }
+
+        .peek-text {
+            color: #999;
+            font-style: italic;
+            border-bottom: 2px dashed #f0f0f0 !important;
+        }
     </style>
 </head>
 <body>
@@ -406,34 +412,33 @@
         }
 
         // Add new translation to the box
-        function addTranslation(text, isNewTalk = false) {
+        function addTranslation(id, text, is_final, is_peek = false) {
             // Remove empty state if this is the first message
             if (isFirstMessage) {
                 translationBox.innerHTML = '';
                 isFirstMessage = false;
             }
 
-            const entry = document.createElement('div');
-            
-            if (isNewTalk) {
-                entry.className = 'new-talk-marker';
-                entry.innerHTML = '📢 New Talk';
-            } else {
-                entry.className = 'translation-entry';
-                
-                const timestamp = document.createElement('div');
-                timestamp.className = 'timestamp';
-                const now = new Date();
-                timestamp.textContent = now.toLocaleTimeString();
-                
-                const textContent = document.createElement('div');
-                textContent.textContent = text;
-                
-                entry.appendChild(timestamp);
-                entry.appendChild(textContent);
+            let entry = document.getElementById(`bubble-${id}`);
+
+            if (!entry) {
+                entry = document.createElement('div');
+                entry.id = `bubble-${id}`;
+                translationBox.appendChild(entry);
             }
             
-            translationBox.appendChild(entry);
+            entry.className = is_peek ? 'translation-entry peek-text' : 'translation-entry';
+                
+            if (is_final) {
+                const now = new Date();
+                entry.innerHTML = `
+                    <div class="timestamp">${now.toLocaleTimeString()}</div>
+                    <div>${text}</div>
+                `;
+            } else {
+                // Subtle indicator for interims
+                entry.innerHTML = `<div>${text}...</div>`;
+            }
             
             // Auto-scroll if enabled
             if (autoScroll) {
@@ -581,37 +586,29 @@
                         const data = JSON.parse(event.data);
                         
                         // Handle different message types
-                        if (data.type === 'text') {
-                            // Text translation message
-                            console.log('Attempting to display text');
+                        if (data.type === 'peek') {
+                            // Get the incoming base language
+                            const incomingLangBase = data.language_code.split('-')[0];
 
-                            if (data.language_code === selectedLanguage) {
-                                addTranslation(data.text);
+                            // If the user's selected language is DIFFERENT than
+                            // the floor language
+                            if (selectedLanguage !== incomingLangBase) {
+                                addTranslation(data.id, data.text, false, true);
+                            } else {
+                                // For floor users, treat peek as a regular
+                                // interim update
+                                addTranslation(data.id, data.text, data.is_final);
                             }
-                        } else if (data.type === 'audio') {
-                            // Text translation message
+                        } else if (data.type === 'audio' || data.type === 'text') {
+                            // Only process if it matches the users's selected
+                            // language
                             if (data.language_code === selectedLanguage) {
-                                addTranslation(data.text);
-                            }// Audio message
-                            console.log('Attempting to play back audio');
-
-                            if (audioEnabled &&
-                                data.language_code === selectedLanguage && 
-                                data.audio) {
-                                
-                                audioQueue.push(data.audio);
-                                processAudioQueue();
-                            }
-                        } else if (data.text) {
-                            // Legacy format - parse nested JSON
-                            const payload = JSON.parse(data.text);
-                            
-                            console.log('Legacy text');
-
-                            if (payload.text === "New Talk") {
-                                addTranslation('', true);
-                            } else if (payload.language_code === selectedLanguage) {
-                                addTranslation(payload.text);
+                                addTranslation(data.id, data.text, data.is_final);
+                                if (data.audio && audioEnabled) {
+                                    console.log('Attempting to play back audio');
+                                    audioQueue.push(data.audio);
+                                    processAudioQueue();
+                                }
                             }
                         }
                     } catch (error) {
