@@ -15,6 +15,8 @@ class TranscriptionEngine:
         self.config = config_manager
         self.translation_queue = translation_queue
         self.stop_event = stop_event
+        self.enable_punctuation = True
+        self.restart_needed = False
 
         try:
             creds_path = self.config.google_credentials
@@ -75,6 +77,12 @@ class TranscriptionEngine:
         self.monitor_enabled = not self.monitor_enabled
         status = "ENABLED" if self.monitor_enabled else "DISABLED"
         print(f"*** Monitor is now {status} ***")
+
+    def toggle_punctuation(self):
+        self.enable_punctuation = not self.enable_punctuation
+        self.restart_needed = True
+        status = "ON" if self.enable_punctuation else "OFF"
+        print(f"\n[SYSTEM] Automatic Punctuation toggled {status}")
 
     # Function for processing the audio stream
     def audio_stream(self, loop):
@@ -246,7 +254,10 @@ class TranscriptionEngine:
                     explicit_decoding_config=decode_conf,
                     language_codes=[curr_lang_code],
                     model="long",
-                    adaptation=adaptation
+                    adaptation=adaptation,
+                    features=cloud_speech.RecognitionFeatures(
+                        enable_automatic_punctuation=self.enable_punctuation
+                    )
                 )
     
                 print(f"Language code: {curr_lang_code}")
@@ -275,6 +286,10 @@ class TranscriptionEngine:
                 )
 
                 while not self.stop_event.is_set():
+                    if self.restart_needed:
+                        self.restart_needed = False
+                        return
+
                     now = time.time()
 
                     if now - start_time >= self.STREAM_LIMIT:

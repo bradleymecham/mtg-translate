@@ -13,6 +13,7 @@ async def wait_for_keypress(stop_event, translation_queue, cfg, transcriber):
     langs = ", ".join(cfg.LANGUAGE_MAP.keys())
     print("\nCommands:")
     print("  'p' - Pause/Resume Transcription")
+    print("  'pc' - Enable/Disable punctuation")
     print("  'm' - Enable/Disable Monitor")
     print("  'nt' - Indicate a New Talk")
     print("  'q' - Quit applicationto quit")
@@ -29,6 +30,8 @@ async def wait_for_keypress(stop_event, translation_queue, cfg, transcriber):
                 translation_queue.put("New Talk")
             elif user_input == 'p':
                 transcriber.toggle_pause()
+            elif user_input == 'pc':
+                transcriber.toggle_punctuation()
             elif user_input == 'm':
                 transcriber.toggle_monitor()
             elif user_input in cfg.LANGUAGE_MAP:
