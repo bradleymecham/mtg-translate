@@ -7,6 +7,7 @@ import aiofiles
 from zeroconf.asyncio import AsyncZeroconf
 from zeroconf import ServiceInfo
 import socket
+import json
 
 class LanguagePortServer:
     """Manages individual port servers for each language"""
