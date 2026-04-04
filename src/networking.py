@@ -8,6 +8,27 @@ from zeroconf.asyncio import AsyncZeroconf
 from zeroconf import ServiceInfo
 import socket
 import json
+import qrcode
+import io
+
+def print_qr_to_terminal(url):
+    # Create the QR object
+    qr = qrcode.QRCode(version=1, box_size=1, border=2)
+    qr.add_data(url)
+    qr.make(fit=True)
+    
+    # We use a StringIO buffer to capture the output
+    f = io.StringIO()
+    qr.print_ascii(out=f, invert=True) # invert=True makes it work in dark terminals
+    f.seek(0)
+    
+    print("\n" + "="*40)
+    print(" SCAN TO CONNECT TO THIS server")
+    print("="*40 + "\n")
+    print(f.read())
+    print(f"URL: {url}\n")
+    print("="*40 + "\n")
+
 
 class LanguagePortServer:
     """Manages individual port servers for each language"""
@@ -208,6 +229,7 @@ class NetworkServer:
             await self.zeroconf.async_register_service(self.http_info)
             await self.zeroconf.async_register_service(self.ws_info)
             print(f"\n✓ mDNS registered as 'captions.local' @ {self.server_ip}")
+            print_qr_to_terminal(f"http://captions.local:8080")
     
     async def start_servers(self):
         # Start WebSocket server
