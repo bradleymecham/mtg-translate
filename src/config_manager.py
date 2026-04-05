@@ -7,6 +7,7 @@ class LanguageInfo:
     display_name: str
     speech_code: str
     translation_code: str
+    port: int
     # Future options
     # rtl: bool = False
     # font_preference: str = "Arial"
@@ -22,16 +23,16 @@ class ConfigManager:
 
         # Language Map stays for reference
         self.LANGUAGE_MAP = { #transcription to translation
-            "cn": LanguageInfo("Chinese (PRC)","cmn-Hans-CN","zh-Hans"),
-            "en": LanguageInfo("English","en-US","en"),
-            "fr": LanguageInfo("French","fr","fr"),
-            "ja": LanguageInfo("Japanese","ja-JP","ja"),
-            "ru": LanguageInfo("Russian","ru-RU","ru"),
-            "pt": LanguageInfo("Portuguese","pt-BR","pt-BR"),
-            "es": LanguageInfo("Spanish","es-US","es-US"),
-            "es2": LanguageInfo("Spanish (Mexico)","es-MX","es-MX"),
-            "sw": LanguageInfo("Swahili","sw","sw"),
-            "sw2": LanguageInfo("Swahili (Kenya)","sw-KE","sw")
+            "en": LanguageInfo("English","en-US","en", 9000),
+            "es": LanguageInfo("Spanish","es-US","es-US", 9001),
+            "fr": LanguageInfo("French","fr","fr", 9002),
+            "sw": LanguageInfo("Swahili","sw","sw", 9003),
+            "ja": LanguageInfo("Japanese","ja-JP","ja", 9004),
+            "cn": LanguageInfo("Chinese (PRC)","cmn-Hans-CN","zh-Hans", 9005),
+            "ru": LanguageInfo("Russian","ru-RU","ru", 9006),
+            "pt": LanguageInfo("Portuguese","pt-BR","pt-BR", 9007),
+            "es2": LanguageInfo("Spanish (Mexico)","es-MX","es-MX", 9008),
+            "sw2": LanguageInfo("Swahili (Kenya)","sw-KE","sw", 9009)
             # Add future language codes here
         }
 

@@ -65,8 +65,6 @@ async def main():
     parser = argparse.ArgumentParser(description="Master Translation Server")
     parser.add_argument('-v', '--verbose', action='store_true',
                         help="Enable debug mode")
-    parser.add_argument('--start-port', type=int, default=9000,
-                        help="Starting port for language servers (default: 9000)")
     args = parser.parse_args()
 
     # Setup shared resources
@@ -86,15 +84,19 @@ async def main():
 
         # Create port servers for each language
         port_servers = {}
-        current_port = args.start_port
     
         print("\n=== Language Port Assignments ===")
-        for lang_code, lang_name in cfg.target_languages.items():
-            port_servers[lang_code] = LanguagePortServer(
-                lang_code, current_port, cfg, tts, loop
+        for lang_code in cfg.target_languages:
+            lang_info = cfg.LANGUAGE_MAP[lang_code]
+            port_server = LanguagePortServer(
+                lang_code, lang_info.port, cfg, tts, loop,
+                on_client_change = net.update_transcription_state
             )
-            print(f"{lang_name} ({lang_code}): port {current_port}")
-            current_port += 1
+            print(f"{lang_info.display_name} ({lang_code}): port {lang_info.port}")
+            port_servers[lang_code] = port_server
+
+            net.language_servers.append(port_server)
+            await port_server.start()
 
         # Create master translation engine with port servers
         translator = TranslationEngine(cfg, translation_queue, net,
@@ -103,10 +105,6 @@ async def main():
         # Start all servers
         await net.register_mDNS()
         await net.start_servers()
-
-        # Start language port servers
-        for port_server in port_servers.values():
-            await port_server.start()
 
         print("\n=== Master Server Ready ===")
         print("Web interface: http://captions.local:8080")

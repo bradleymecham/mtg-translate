@@ -29,6 +29,7 @@ class TranslationEngine:
         # Get the port server for this language
         port_server = self.port_servers.get(dest_code)
         if not port_server:
+            print(f"Port server for {dest_code} language not found.")
             return
 
         # Only translate and broadcast if there are connected slaves

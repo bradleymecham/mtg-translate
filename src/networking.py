@@ -11,28 +11,10 @@ import json
 import qrcode
 import io
 
-def print_qr_to_terminal(url):
-    # Create the QR object
-    qr = qrcode.QRCode(version=1, box_size=1, border=2)
-    qr.add_data(url)
-    qr.make(fit=True)
-    
-    # We use a StringIO buffer to capture the output
-    f = io.StringIO()
-    qr.print_ascii(out=f, invert=True) # invert=True makes it work in dark terminals
-    f.seek(0)
-    
-    print("\n" + "="*40)
-    print(" SCAN TO CONNECT TO THIS server")
-    print("="*40 + "\n")
-    print(f.read())
-    print(f"URL: {url}\n")
-    print("="*40 + "\n")
-
 
 class LanguagePortServer:
     """Manages individual port servers for each language"""
-    def __init__(self, lang_code, port, config, tts_engine, loop):
+    def __init__(self, lang_code, port, config, tts_engine, loop, on_client_change=None):
         self.lang_code = lang_code
         self.port = port
         self.config = config
@@ -40,12 +22,16 @@ class LanguagePortServer:
         self.loop = loop
         self.clients = set()
         self.server = None
+        self.on_client_change = on_client_change
 
     async def handle_client(self, reader, writer):
         """Handle a new slave connection"""
         addr = writer.get_extra_info('peername')
         print(f"[{self.lang_code}:{self.port}] Slave connected from {addr}")
         self.clients.add((reader, writer))
+
+        if self.on_client_change:
+            self.on_client_change()
 
         try:
             # Keep connection alive and wait for disconnect
@@ -61,6 +47,9 @@ class LanguagePortServer:
             self.clients.discard((reader, writer))
             writer.close()
             await writer.wait_closed()
+
+            if self.on_client_change:
+                self.on_client_change()
 
     async def start(self):
         """Start the port server"""
@@ -107,10 +96,32 @@ class NetworkServer:
         self.clients = set()
         self.transcriber = transcriber
         self.zeroconf = AsyncZeroconf()
+        self.language_servers = []
 
         self.ip_addresses = self.get_ip_addresses()
         for iface, iface_type, ip in self.ip_addresses:
             print(f"{iface} ({iface_type}): {ip}")
+
+    def update_transcription_state(self):
+            """Centralized logic to start/stop Google Speech based on any client activity."""
+            if not self.transcriber:
+                return
+
+            # 1. Count Web users
+            web_count = len(self.clients)
+
+            # 2. Count Slave users across ALL language ports
+            slave_count = sum(len(lp.clients) for lp in self.language_servers)
+
+            total_active = web_count + slave_count
+
+            # 3. Decision Engine
+            if total_active > 0 and self.transcriber.is_paused:
+                print(f"--- Client detected ({total_active} total). Activating transcription. ---")
+                self.transcriber.toggle_pause()
+            elif total_active == 0 and not self.transcriber.is_paused:
+                print("--- No clients remaining. Sleeping transcription. ---")
+                self.transcriber.toggle_pause()
 
     def get_interface_type(self,interface_name):
         name = interface_name.lower()
@@ -140,6 +151,24 @@ class NetworkServer:
                     result.append((interface, interface_type, ip))
         return result
 
+    def print_qr_to_terminal(self,url):
+        # Create the QR object
+        qr = qrcode.QRCode(version=1, box_size=1, border=2)
+        qr.add_data(url)
+        qr.make(fit=True)
+
+        # We use a StringIO buffer to capture the output
+        f = io.StringIO()
+        qr.print_ascii(out=f, invert=True) # invert=True makes it work in dark terminals
+        f.seek(0)
+
+        print("\n" + "="*40)
+        print(" SCAN TO CONNECT TO THIS server")
+        print("="*40 + "\n")
+        print(f.read())
+        print(f"URL: {url}\n")
+        print("="*40 + "\n")
+
     async def http_handler(self, request):
         # Serve the HTML client file
         try:
@@ -155,11 +184,7 @@ class NetworkServer:
     async def websocket_handler(self, websocket):
         print(f"Client connected: {websocket.remote_address}")
         self.clients.add(websocket)
-
-        # Start transcriber if this is the first client
-        if len(self.clients) == 1 and self.transcriber:
-            if self.transcriber.is_paused:
-                self.transcriber.toggle_pause()
+        self.update_transcription_state()
 
         try:
             async for message in websocket:
@@ -172,11 +197,7 @@ class NetworkServer:
         finally:
             print(f"Client disconnected: {websocket.remote_address}")
             self.clients.remove(websocket)
-
-            # Pause transcriber if no one is left
-            if len(self.clients) == 0 and self.transcriber:
-                if not self.transcriber.is_paused:
-                    self.transcriber.toggle_pause()
+            self.update_transcription_state()
 
     async def broadcast_message(self, message):
         if self.clients:
@@ -192,7 +213,7 @@ class NetworkServer:
                 *[client.send(data) for client in self.clients],
                 return_exceptions=True
             )
-        
+
     async def register_mDNS(self):
 
         # Get the first non-loopback IP for mDNS registration
@@ -229,8 +250,8 @@ class NetworkServer:
             await self.zeroconf.async_register_service(self.http_info)
             await self.zeroconf.async_register_service(self.ws_info)
             print(f"\n✓ mDNS registered as 'captions.local' @ {self.server_ip}")
-            print_qr_to_terminal(f"http://captions.local:8080")
-    
+            self.print_qr_to_terminal(f"http://{self.http_info.server.rstrip('.')}:8080")
+
     async def start_servers(self):
         # Start WebSocket server
         self.ws_server = (
