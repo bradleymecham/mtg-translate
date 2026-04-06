@@ -92,6 +92,13 @@ class ConfigManager:
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = self.google_credentials
         
         try:
+            self.mdns_name = (
+                self.config['NETWORK']['mdns_name'])
+        except (KeyError, ValueError):
+            print("Server name unspecified. Defaulting to 'captions'")
+            self.mdns_name = 'captions'
+
+        try:
             self.num_channels = int(self.config['AUDIO']['num_channels'])
         except (KeyError, ValueError):
             print("Number of audio channels unspecified.  Defaulting to 1")

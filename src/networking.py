@@ -10,6 +10,7 @@ import socket
 import json
 import qrcode
 import io
+import os
 
 
 class LanguagePortServer:
@@ -92,8 +93,9 @@ class LanguagePortServer:
             self.clients.discard(client)
 
 class NetworkServer:
-    def __init__(self, transcriber=None):
+    def __init__(self, config, transcriber=None):
         self.clients = set()
+        self.config = config
         self.transcriber = transcriber
         self.zeroconf = AsyncZeroconf()
         self.language_servers = []
@@ -150,6 +152,25 @@ class NetworkServer:
                     interface_type = self.get_interface_type(interface)
                     result.append((interface, interface_type, ip))
         return result
+
+    def generate_server_qr(self, url):
+
+        # Ensure the directory exists
+        img_dir = "static/img"
+        if not os.path.exists(img_dir):
+            os.makedirs(img_dir)
+
+        # Create high-res QR for a 240x240 display / phone
+        qr = qrcode.QRCode(version=1, box_size=10, border=4)
+        qr.add_data(url)
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+        img_path = os.path.join(img_dir, "server_qr.png")
+        img.save(img_path)
+
+        print(f"✓ QR Code generated for {url} at {img_path}")
+
 
     def print_qr_to_terminal(self,url):
         # Create the QR object
@@ -221,6 +242,9 @@ class NetworkServer:
         self.http_info = None
         self.ws_info = None
 
+        FQDN = f"{self.config.mdns_name.lower()}.local."
+        service_prefix = self.config.mdns_name.capitalize()
+
         if self.ip_addresses:
             # Get IP from 1st interface
             self.server_ip = self.ip_addresses[0][2]
@@ -231,26 +255,29 @@ class NetworkServer:
             # Register both HTTP and WebSocket services
             self.http_info = ServiceInfo(
                 "_http._tcp.local.",
-                "Captions._http._tcp.local.",
+                "{service_prefix}._http._tcp.local.",
                 addresses=[ip_bytes],
                 port=8080,
                 properties={'path': '/', 'version': '1.0'},
-                server="captions.local."
+                server=FQDN
             )
 
             self.ws_info = ServiceInfo(
                 "_ws._tcp.local.",
-                "Captions._ws._tcp.local.",
+                "{service_prefix}._ws._tcp.local.",
                 addresses=[ip_bytes],
                 port=8765,
                 properties={'version': '1.0'},
-                server="captions.local."
+                server=FQDN
             )
 
             await self.zeroconf.async_register_service(self.http_info)
             await self.zeroconf.async_register_service(self.ws_info)
-            print(f"\n✓ mDNS registered as 'captions.local' @ {self.server_ip}")
-            self.print_qr_to_terminal(f"http://{self.http_info.server.rstrip('.')}:8080")
+            print(f"\n✓ mDNS registered as '{FQDN}' @ {self.server_ip}")
+            
+            url = f"http://{FQDN.rstrip('.')}:8080"
+            self.print_qr_to_terminal(url)
+            self.generate_server_qr(url)
 
     async def start_servers(self):
         # Start WebSocket server
@@ -260,6 +287,7 @@ class NetworkServer:
 
         # Start HTTP server
         app = web.Application()
+        app.router.add_static('/static/', path='static', name='static')
         app.router.add_get('/', self.http_handler)
         self.runner = web.AppRunner(app)
         await self.runner.setup()

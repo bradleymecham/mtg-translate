@@ -79,7 +79,7 @@ async def main():
         cfg.debug_mode = args.verbose
 
         transcriber = TranscriptionEngine(cfg, translation_queue, stop_event)
-        net = NetworkServer(transcriber)
+        net = NetworkServer(cfg, transcriber)
         tts = TextToSpeechEngine(cfg, net)
 
         # Create port servers for each language

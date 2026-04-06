@@ -2,3 +2,4 @@ config.ini
 *.json
 src/__pycache__/
 .venv
+static/img/server_qr.png
