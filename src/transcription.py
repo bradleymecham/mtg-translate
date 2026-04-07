@@ -22,6 +22,9 @@ class TranscriptionEngine:
         self.last_interim_text = ""
         self.last_interim_time = 0
 
+        self.pre_buffer = []
+        self.PRE_BUFFER_CHUNKS = 8
+
         try:
             creds_path = self.config.google_credentials
             if not os.path.exists(creds_path):
@@ -63,6 +66,7 @@ class TranscriptionEngine:
         self.last_google_response_time = time.time()
 
     def restart_signal(self):
+        self.skip_pre_buffer = True
         """Public method to trigger a stream restart."""
         print("Restarting transcription stream for language change...")
         while not self.audio_queue.empty():
@@ -137,6 +141,10 @@ class TranscriptionEngine:
 
                     # Send resulting 16k mono bytes to transcription
                     resampled_bytes = resampled.tobytes()
+
+                    self.pre_buffer.append(resampled_bytes)
+                    if len(self.pre_buffer) > self.PRE_BUFFER_CHUNKS:
+                        self.pre_buffer.pop(0)
 
                     loop.call_soon_threadsafe(self.audio_queue.put_nowait, 
                                               resampled_bytes)
@@ -288,6 +296,12 @@ class TranscriptionEngine:
                     recognizer=self.recognizer,
                     streaming_config=streaming_config
                 )
+
+                if not getattr(self, 'skip_pre_buffer', False):
+                    for buffered_chunk in list(self.pre_buffer):
+                        yield cloud_speech.StreamingRecognizeRequest(
+                                audio=buffered_chunk)
+                self.skip_pre_buffer = False
 
                 while not self.stop_event.is_set():
                     if self.restart_needed:
