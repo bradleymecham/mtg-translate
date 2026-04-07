@@ -296,7 +296,7 @@ class NetworkServer:
         print("\n✓ HTTP server started on port 8080")
 
         print("\nClients can connect by visiting:")
-        print("  http://captions.local:8080  (recommended)")
+        print(f"  http://{self.config.mdns_name}.local:8080  (recommended)")
         for iface, iface_type, ip in self.ip_addresses:
             print(f"  http://{ip}:8080")
         print("\n")
