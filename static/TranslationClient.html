@@ -429,7 +429,10 @@
         const modal = document.getElementById("qrModal");
         const shareBtn = document.getElementById("shareBtn");
         const closeBtn = document.getElementById("closeModal");
-
+        // 500ms cushion for bad WiFi. Increase to 1s if it's really bad.
+        const TARGET_BUFFER_SEC = 0.5;
+        // If the lag gets worse than 2s, force a catch-up
+        const MAX_BUFFER_SEC = 2.0; 
         shareBtn.onclick = () => {
             document.getElementById("serverUrlText").innerText = window.location.href;
             modal.style.display = "flex";
@@ -649,18 +652,26 @@
                         source.buffer = audioBuffer;
                         source.connect(audioContext.destination);
 
-                        // Simple, low-latency scheduling
+                        // Resilient Jitter Buffer Scheduling
                         const currentTime = audioContext.currentTime;
 
-                        // If we've fallen behind by more than 100ms,
-                        // reset to catch up
-                        if (nextStartTime < currentTime - 0.1) {
+                        if (nextStartTime < currentTime) {
+                            // STARVATION: The network lagged, and the audio ran
+                            // out.  Instead of playing immediately, we push the
+                            // start time into the future to build up our safety
+                            // cushion again.
                             console.log(
-                                'Audio fell behind, resetting to catch up');
-                            nextStartTime = currentTime + 0.01;
-                        } else if (nextStartTime < currentTime) {
-                            // Minimal buffer for jitter
-                            nextStartTime = currentTime + 0.01;
+                                'Network lag detected. Rebuilding audio buffer.');
+                            nextStartTime = currentTime + TARGET_BUFFER_SEC;
+                        } else if (nextStartTime > currentTime + MAX_BUFFER_SEC) {
+                            // OVER-BUFFERING: The browser tab was asleep, or we
+                            // received a massive burst. To prevent playing
+                            // audio from 3 minutes ago, we drop the old packets
+                            // and snap back to the current time + our safety
+                            // cushion.
+                            console.log(
+                                'Buffer too large. Fast forwarding to catch up.');
+                            nextStartTime = currentTime + TARGET_BUFFER_SEC;
                         }
                         
                         source.start(nextStartTime);

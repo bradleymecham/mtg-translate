@@ -23,6 +23,8 @@ class TranscriptionEngine:
         self.last_interim_time = 0
 
         self.pre_buffer = []
+        # 1024/16000Hz = .064s / chunk.  8 chunks is .512s
+        # Can play with this a little if performance isn't quite right
         self.PRE_BUFFER_CHUNKS = 8
 
         try:
@@ -48,8 +50,8 @@ class TranscriptionEngine:
 
         self.audio = pyaudio.PyAudio()
         self.audio_queue = queue.Queue()
-        # maxsize=20 ensures we never have more than ~400ms of lag
-        self.broadcast_queue = queue.Queue(maxsize=20)
+        # maxsize=100 ensures we never have more than ~2s of lag
+        self.broadcast_queue = queue.Queue(maxsize=100)
         self.monitor_queue = queue.Queue()
         self.monitor_enabled = False
         self.speech_client = SpeechClient()
