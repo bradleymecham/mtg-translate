@@ -453,6 +453,13 @@
         languageSelect.addEventListener('change', (e) => {
             selectedLanguage = e.target.value;
             console.log('Language changed to:', selectedLanguage);
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: "subscribe",
+                    language: selectedLanguage
+                }));
+    }
         });
 
         // Audio enabled checkbox
@@ -629,6 +636,13 @@
                 console.log('WebSocket connected');
                 statusIndicator.classList.add('connected');
                 statusText.textContent = 'Connected';
+
+                selectedLanguage = languageSelect.value;
+
+                ws.send(JSON.stringify({
+                    type: "subscribe",
+                    language: selectedLanguage
+                }));
             };
 
             ws.onmessage = (event) => {

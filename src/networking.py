@@ -99,6 +99,7 @@ class NetworkServer:
         self.transcriber = transcriber
         self.zeroconf = AsyncZeroconf()
         self.language_servers = []
+        self.active_languages = {}
 
         self.ip_addresses = self.get_ip_addresses()
         for iface, iface_type, ip in self.ip_addresses:
@@ -209,7 +210,9 @@ class NetworkServer:
 
         try:
             async for message in websocket:
-                pass
+                data = json.loads(message)
+                if data.get('type') == 'subscribe':
+                    self.active_languages[websocket] = data['language']
         except websockets.exceptions.ConnectionClosedError: 
             # This catches the specific "browser fell asleep" scenario
             pass
@@ -218,6 +221,7 @@ class NetworkServer:
         finally:
             print(f"Client disconnected: {websocket.remote_address}")
             self.clients.remove(websocket)
+            self.active_languages.pop(websocket, None)
             self.update_transcription_state()
 
     async def broadcast_message(self, message):

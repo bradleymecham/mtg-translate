@@ -33,7 +33,8 @@ class TranslationEngine:
             return
 
         # Only translate and broadcast if there are connected slaves
-        if not port_server.clients and not self.network_server.clients:
+        if (not port_server.clients and 
+            not dest_code in self.network_server.active_languages.values()):
             if self.config.debug_mode:
                 print(f"Skipping {lang_name} - no clients connected")
             return
