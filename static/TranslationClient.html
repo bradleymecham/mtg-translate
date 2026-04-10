@@ -454,6 +454,7 @@
             selectedLanguage = e.target.value;
             console.log('Language changed to:', selectedLanguage);
 
+            // Send the selected language back to the server
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     type: "subscribe",
@@ -639,6 +640,7 @@
 
                 selectedLanguage = languageSelect.value;
 
+                // Sent the selected language back to the server
                 ws.send(JSON.stringify({
                     type: "subscribe",
                     language: selectedLanguage
