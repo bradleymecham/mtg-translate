@@ -3,3 +3,4 @@ config.ini
 src/__pycache__/
 .venv
 static/img/server_qr.png
+*.pem
