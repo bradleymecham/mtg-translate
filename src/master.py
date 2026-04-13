@@ -107,7 +107,7 @@ async def main():
         await net.start_servers()
 
         print("\n=== Master Server Ready ===")
-        print(f"Web interface: http://{cfg.mdns_name}.local:8080")
+        print(f"Web interface: http://{cfg.mdns_name}.local")
         print("Slaves can connect to language-specific ports listed above\n")
 
         tasks = [

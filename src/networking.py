@@ -1,8 +1,8 @@
 import asyncio
 import psutil
 import ipaddress
-import websockets
-from aiohttp import web
+import ssl
+from aiohttp import web, WSMsgType
 import aiofiles
 from zeroconf.asyncio import AsyncZeroconf
 from zeroconf import ServiceInfo
@@ -203,31 +203,45 @@ class NetworkServer:
                                 status=404)
         pass
 
-    async def websocket_handler(self, websocket):
-        print(f"Client connected: {websocket.remote_address}")
+    async def websocket_handler(self, request):
+
+        # This "upgrades" the HTTP request to a WebSocket
+        websocket = web.WebSocketResponse()
+        await websocket.prepare(request)
+
+        print("Web client connected securely!")
+        #print(f"Client connected: {websocket.remote_address}")
+
         self.clients.add(websocket)
         self.update_transcription_state()
 
         try:
             async for message in websocket:
-                data = json.loads(message)
-                if data.get('type') == 'subscribe':
-                    self.active_languages[websocket] = data['language']
-        except websockets.exceptions.ConnectionClosedError: 
-            # This catches the specific "browser fell asleep" scenario
-            pass
+                if message.type == WSMsgType.TEXT:
+                    data = json.loads(message.data)
+
+                    if data.get('type') == 'subscribe':
+                        language = data.get('language')
+                        self.active_languages[websocket] = language
+                elif message.type == WSMsgType.ERROR:
+                    print(f"WebSocket connection closed with exception {websocket.exception()}")
         except Exception as e:
             print(f"Note: Client connection closed unexpectedly or reset ({e})")
         finally:
-            print(f"Client disconnected: {websocket.remote_address}")
+            print("Web client disconnected.")
+            #print(f"Client disconnected: {websocket.remote_address}")
             self.clients.remove(websocket)
             self.active_languages.pop(websocket, None)
             self.update_transcription_state()
 
+        return websocket
+
     async def broadcast_message(self, message):
         if self.clients:
-            await asyncio.wait([asyncio.create_task(client.send(message)) 
-                for client in self.clients])
+            await asyncio.gather(
+                *[client.send_str(message) for client in self.clients],
+                return_exceptions=True
+            )
 
     async def broadcast_binary(self, data):
         """Broadcasts raw binary audio to all connected websocket clients."""
@@ -235,7 +249,7 @@ class NetworkServer:
             # Use gather to send to everyone at once.
             # return_exceptions=True shields against individual client failures.
             await asyncio.gather(
-                *[client.send(data) for client in self.clients],
+                *[client.send_bytes(data) for client in self.clients],
                 return_exceptions=True
             )
 
@@ -243,8 +257,8 @@ class NetworkServer:
 
         # Get the first non-loopback IP for mDNS registration
         self.server_ip = None
-        self.http_info = None
-        self.ws_info = None
+        self.https_info = None
+        self.wss_info = None
 
         FQDN = f"{self.config.mdns_name.lower()}.local."
         service_prefix = self.config.mdns_name.capitalize()
@@ -257,64 +271,76 @@ class NetworkServer:
             ip_bytes =  socket.inet_aton(self.server_ip)
 
             # Register both HTTP and WebSocket services
-            self.http_info = ServiceInfo(
-                "_http._tcp.local.",
-                "{service_prefix}._http._tcp.local.",
+            self.https_info = ServiceInfo(
+                "_https._tcp.local.",
+                f"{service_prefix}._https._tcp.local.",
                 addresses=[ip_bytes],
-                port=8080,
+                port=443,
                 properties={'path': '/', 'version': '1.0'},
                 server=FQDN
             )
 
-            self.ws_info = ServiceInfo(
-                "_ws._tcp.local.",
-                "{service_prefix}._ws._tcp.local.",
+            self.wss_info = ServiceInfo(
+                "_wss._tcp.local.",
+                f"{service_prefix}._wss._tcp.local.",
                 addresses=[ip_bytes],
-                port=8765,
-                properties={'version': '1.0'},
+                port=443,
+                properties={'path': '/ws', 'version': '1.0'},
                 server=FQDN
             )
 
-            await self.zeroconf.async_register_service(self.http_info)
-            await self.zeroconf.async_register_service(self.ws_info)
-            print(f"\n✓ mDNS registered as '{FQDN}' @ {self.server_ip}")
+            await self.zeroconf.async_register_service(self.https_info)
+            await self.zeroconf.async_register_service(self.wss_info)
+            print(f"\n✓ mDNS registered as '{FQDN}' @ {self.server_ip} (Port 443)")
             
-            url = f"http://{FQDN.rstrip('.')}:8080"
+            url = f"https://{FQDN.rstrip('.')}"
             self.print_qr_to_terminal(url)
             self.generate_server_qr(url)
 
     async def start_servers(self):
-        # Start WebSocket server
-        self.ws_server = (
-            await websockets.serve(self.websocket_handler, "0.0.0.0", 8765))
-        print("\n✓ WebSocket server started on port 8765")
+        # Create SSL context
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_context.load_cert_chain(certfile='cert.pem', keyfile='key.pem')
 
-        # Start HTTP server
+        # Start Secure HTTP server (HTTPS)
         app = web.Application()
         app.router.add_static('/static/', path='static', name='static')
         app.router.add_get('/', self.http_handler)
+        # Route the WebSockets through the same app
+        app.router.add_get('/ws', self.websocket_handler)
+
+        # Point to the favicon, as well
+        app.router.add_get('/favicon.ico', lambda r: web.HTTPFound('/static/favicon.ico'))
+
         self.runner = web.AppRunner(app)
         await self.runner.setup()
-        site = web.TCPSite(self.runner, "0.0.0.0", 8080)
+
+        site = web.TCPSite(self.runner, "0.0.0.0", 443, ssl_context=ssl_context)
         await site.start()
-        print("\n✓ HTTP server started on port 8080")
+
+        print("\n✓ Secure Server (HTTPS & WSS) started on port 443")
 
         print("\nClients can connect by visiting:")
-        print(f"  http://{self.config.mdns_name}.local:8080  (recommended)")
+        print(f"  https://{self.config.mdns_name}.local (recommended)")
         for iface, iface_type, ip in self.ip_addresses:
-            print(f"  http://{ip}:8080")
+            print(f"  https://{ip}")
         print("\n")
 
     async def stop_servers(self):
-        self.ws_server.close()
-        await self.ws_server.wait_closed()
 
-        await self.runner.cleanup()
+        close_tasks = [client.close() for client in self.clients]
+
+        if close_tasks:
+            await asyncio.gather(*close_tasks, return_exceptions=True)
+            self.clients.clear()
+
+        if hasattr(self, 'runner'):
+            await self.runner.cleanup()
 
 
     async def unregister_mDNS(self):
-            if self.server_ip and self.http_info and self.ws_info:
-                await self.zeroconf.async_unregister_service(self.http_info)
-                await self.zeroconf.async_unregister_service(self.ws_info)
+            if self.server_ip and self.https_info and self.wss_info:
+                await self.zeroconf.async_unregister_service(self.https_info)
+                await self.zeroconf.async_unregister_service(self.wss_info)
             await self.zeroconf.async_close()
 
