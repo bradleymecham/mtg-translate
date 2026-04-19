@@ -37,5 +37,5 @@ def list_swahili_voices(key_path):
 
 if __name__ == "__main__":
     # Update this path if the file is in a different subdirectory
-    KEY_FILE = "englishtexttojapanese-4f53c87fe8c3.json"
+    KEY_FILE = "GoogleAPI_creds_englishtexttojapanese-4f53c87fe8c3.json"
     list_swahili_voices(KEY_FILE)

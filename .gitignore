@@ -1,5 +1,5 @@
 config.ini
-*.json
+GoogleAPI_creds_*.json
 src/__pycache__/
 .venv
 static/img/server_qr.png
