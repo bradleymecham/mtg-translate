@@ -494,7 +494,14 @@
         audioEnabledCheckbox.addEventListener('change', async (e) => {
             audioEnabled = e.target.checked;
             console.log('Audio playback:', audioEnabled ? 'enabled' : 'disabled');
-            if (audioEnabled) await requestWakeLock();
+            if (audioEnabled) {
+                // Play tiny, silent data URI during the user's physical click,
+                // granting the mainPlayer permission to play dynamically later.
+                mainPlayer.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+                mainPlayer.play().catch(
+                    err => console.log('Audio unlocked', err));
+                await requestWakeLock();
+            }
         });
 
         // Volume control
